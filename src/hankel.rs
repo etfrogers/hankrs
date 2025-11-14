@@ -1,13 +1,9 @@
-// from typing import Tuple
 use ndarray::{Array1, Array2, Axis, NewAxis, s};
 use ndarray_interp::interp1d::{Interp1DBuilder, Linear};
 use ndarray_stats::QuantileExt;
 use std::f64::consts::PI;
 
-use crate::bessel_zeros::{BesselFunType, bessel_zeros};
-// import numpy as np
-// import scipy.special as scipy_bessel
-// from scipy import interpolate
+use amos_bessel_rs::{BesselFunType, bessel_j, bessel_zeros};
 
 // The main class for performing Hankel Transforms
 //
@@ -78,10 +74,10 @@ pub struct HankelTransform {
     r: Array1<f64>,
     kr: Array1<f64>,
     v_max: f64,
-    S: f64,
-    T: Array2<f64>,
-    JV: Array1<f64>,
-    JR: Array1<f64>,
+    s: f64,
+    t: Array2<f64>,
+    jv: Array1<f64>,
+    jr: Array1<f64>,
 }
 
 /*
@@ -189,8 +185,7 @@ impl HankelTransform {
         original_k_grid: Option<Array1<f64>>,
     ) -> Self {
         // Calculate N+1 roots must be calculated before max_radius can be derived from k_grid
-        let alpha = bessel_zeros(&BesselFunType::J, order, n_points + 1, 1e-6);
-        //    alpha = scipy_bessel.jn_zeros(self.order, self.n_points + 1)
+        let alpha = Array1::from_vec(bessel_zeros(&BesselFunType::J, order, n_points + 1, 1e-6));
 
         let alpha_n1 = alpha[n_points];
         println!("{}", alpha);
@@ -211,7 +206,7 @@ impl HankelTransform {
         let v = alpha.clone() / (2.0 * PI * max_radius);
         let kr = 2.0 * PI * v;
         let v_max = alpha_n1 / (2.0 * PI * max_radius);
-        let S = alpha_n1;
+        let s = alpha_n1;
 
         // Calculate hankel matrix and vectors
         // jp = scipy_bessel.jv(order, (self.alpha[:, np.newaxis] @ self.alpha[np.newaxis, :]) / self.S)
@@ -223,15 +218,15 @@ impl HankelTransform {
         // let alpha_row: Array2<_> = alpha.slice(s![.., NewAxis]).to_owned();
         let alpha_col: Array2<_> = alpha.slice(s![NewAxis, ..]).to_owned();
         let alpha_matrix = alpha_row.dot(&alpha_col);
-        let jp: Array2<_> = alpha_matrix.map(|a| j_n(order, a / S));
-        let jp1: Array1<_> = alpha.map(|a| j_n(order + 1, *a).abs());
+        let jp: Array2<_> = alpha_matrix.map(|a| bessel_j(order, a / s).unwrap());
+        let jp1: Array1<_> = alpha.map(|a| bessel_j(order + 1, *a).unwrap().abs());
 
         let jp1_row: Array2<_> = jp1.slice(s![.., NewAxis]).to_owned();
         let jp1_col: Array2<_> = jp1.slice(s![NewAxis, ..]).to_owned();
 
-        let T: Array2<_> = 2.0 * jp / (jp1_row.dot(&jp1_col) * S);
-        let JR: Array1<_> = jp1.clone() / max_radius;
-        let JV: Array1<_> = jp1 / v_max;
+        let t: Array2<_> = 2.0 * jp / (jp1_row.dot(&jp1_col) * s);
+        let jr: Array1<_> = jp1.clone() / max_radius;
+        let jv: Array1<_> = jp1 / v_max;
 
         // jp := mat.NewDense(h.nPoints, h.nPoints, nil)
         // jp.Outer(1/h.S, h.alpha, h.alpha)
@@ -259,10 +254,10 @@ impl HankelTransform {
             r,
             kr,
             v_max,
-            S,
-            T,
-            JR,
-            JV,
+            s,
+            t,
+            jr,
+            jv,
         }
     }
 
@@ -298,7 +293,7 @@ impl HankelTransform {
     /// :return: The original k grid used to construct the object.
     /// :rtype: :class:`numpy.ndarray`
     pub fn original_k_grid(&self) -> &Array1<f64> {
-        match self.original_radial_grid {
+        match self.original_k_grid {
             Some(ref kg) => kg,
             None => panic!(
                 "Attempted to access original_k_grid on HankelTransform \
@@ -326,13 +321,13 @@ impl HankelTransform {
     //     :meth:`HankelTransform.qdht` (sampled at ``self.r``)
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_transform_r(&self, function: Array1<f64>, axis: Axis) -> Array1<f64> {
+    pub fn to_transform_r(&self, function: &Array1<f64> /*,  axis: Axis*/) -> Array1<f64> {
         //         let data =     array![0.0,  0.5, 1.0 ];
         // let x =        array![0.0,  1.0, 2.0 ];
         // let query =    array![0.5,  1.0, 1.5 ];
         // let expected = array![0.25, 0.5, 0.75];
 
-        spline(&self.original_radial_grid(), function, &self.r, axis)
+        spline(&self.original_radial_grid(), function, &self.r, Axis(0))
     }
 
     // Interpolate a function, assumed to have been given at the Hankel transform points
@@ -352,8 +347,8 @@ impl HankelTransform {
     // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_radial_grid`.
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_original_r(&self, function: Array1<f64>, axis: Axis) -> Array1<f64> {
-        spline(&self.r, function, self.original_radial_grid(), axis)
+    pub fn to_original_r(&self, function: &Array1<f64> /* , axis: Axis*/) -> Array1<f64> {
+        spline(&self.r, function, self.original_radial_grid(), Axis(0))
     }
 
     // Interpolate a function, assumed to have been given at the original k
@@ -374,8 +369,8 @@ impl HankelTransform {
     // :return: Interpolated function suitable to passing to
     //     :meth:`HankelTransform.qdht` (sampled at ``self.kr``)
     // :rtype: :class:`numpy.ndarray`
-    pub fn to_transform_k(&self, function: Array1<f64>, axis: Axis) -> Array1<f64> {
-        return spline(self.original_k_grid(), function, &self.kr, axis);
+    pub fn to_transform_k(&self, function: &Array1<f64>) -> Array1<f64> {
+        return spline(self.original_k_grid(), function, &self.kr, Axis(0));
     }
 
     /// Interpolate a function, assumed to have been given at the Hankel transform points
@@ -395,8 +390,8 @@ impl HankelTransform {
     // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_k_grid`.
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_original_k(&self, function: Array1<f64>, axis: Axis) -> Array1<f64> {
-        return spline(&self.kr, function, self.original_k_grid(), axis);
+    pub fn to_original_k(&self, function: &Array1<f64>) -> Array1<f64> {
+        return spline(&self.kr, function, self.original_k_grid(), Axis(0));
     }
 
     /// QDHT: Quasi Discrete Hankel Transform
@@ -425,7 +420,7 @@ impl HankelTransform {
         if (fr.ndim() == 1) || (axis == Axis(fr.ndim() - 2)) {
             let (jr, jv) = self.get_scaling_factors(fr);
 
-            let fv = jv * self.T.dot(&(fr / jr));
+            let fv = jv * self.t.dot(&(fr / jr));
             return fv;
         } else {
             todo!();
@@ -454,7 +449,7 @@ impl HankelTransform {
     pub fn iqdht(&self, fv: &Array1<f64>, axis: Axis) -> Array1<f64> {
         if (fv.ndim() == 1) || (axis == Axis(fv.ndim() - 2)) {
             let (jr, jv) = self.get_scaling_factors(fv);
-            jr * self.T.dot(&(fv / jv))
+            jr * self.t.dot(&(fv / jv))
         } else {
             todo!()
             // _fv = np.core.swapaxes(fv, axis, -2);
@@ -476,17 +471,17 @@ impl HankelTransform {
             //     np.reshape(self.JV, _shape) * np.ones(n2),
             // )
         } else {
-            (&self.JR, &self.JV)
+            (&self.jr, &self.jv)
         }
     }
 }
 
-fn spline(x0: &Array1<f64>, y0: Array1<f64>, x: &Array1<f64>, _axis: Axis) -> Array1<f64> {
+fn spline(x0: &Array1<f64>, y0: &Array1<f64>, x: &Array1<f64>, _axis: Axis) -> Array1<f64> {
     // f = interpolate.interp1d(x0, y0, axis=axis, fill_value="extrapolate", kind="cubic")
     // return f(x)
-    let interpolator = Interp1DBuilder::new(y0)
+    let interpolator = Interp1DBuilder::new(y0.clone())
         .x(x0.clone())
-        .strategy(Linear::new())
+        .strategy(Linear::new().extrapolate(true))
         .build()
         .unwrap();
     interpolator.interp_array(x).unwrap()

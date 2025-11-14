@@ -1,10 +1,14 @@
-use crate::hankel::HankelTransform;
-use approx::{assert_relative_eq, AbsDiffEq, RelativeEq};
+mod utils;
+
+use approx::assert_relative_eq;
+use hankrs::hankel::HankelTransform;
 use ndarray::{Array1, Axis};
+use num::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
+use rstest_reuse::{apply, template};
 use std::{f64::consts::PI, mem::MaybeUninit};
-
+use utils::assert_relative_eq_with_end_points;
 // const pi: f64 = math.PI;
 const MAX_ORDER: i32 = 4;
 
@@ -66,26 +70,45 @@ impl<'a> Shape<'a> {
 }
 
 // static SMOOTH_SHAPES: LazyLock<Vec<Shape>> = LazyLock::new(|| {
-#[fixture]
-fn smooth_shapes<'a>() -> Vec<Shape<'a>> {
-    vec![
-        Shape {
+#[template]
+#[rstest]
+#[case(Shape {
             name: "zeros".to_string(),
-            f: &|_| return 0.0,
-        },
-        // {"e^(-r^2)", func(r float64) float64 { return math.Exp(-math.Pow(r, 2)) }},
-        // {"r", func(r float64) float64 { return r }},
-        // {"r^2", func(r float64) float64 { return math.Pow(r, 2) }},
-        // {"1/(sqrt(r^2 + 0.1^2))", func(r float64) float64 { return 1 / math.Sqrt(math.Pow(r, 2)+math.Pow(0.1, 2)) }},
-    ]
-}
+            f: &|_| 0.0,
+        },)]
+#[case( Shape {
+            name: "e^(-r^2)".to_string(),
+            f: &|r: f64| (-r.pow(2.0_f64)).exp(),
+        })]
+#[case( Shape {
+        name:"r".to_string(), f: &|r: f64| r })]
+#[case( Shape {
+        name:"r^2".to_string(), f: &|r: f64|  r.pow(2.0) })]
+#[case( Shape {
+ name:"1/(sqrt(r^2 + 0.1^2))".to_string(), f: &|r: f64|  1.0 / (r.pow(2.0_f64)+0.1.pow(2.0_f64)).sqrt() })]
+fn smooth_shapes(#[case] shape: Shape) {}
+// fn smooth_shapes<'a>() -> Vec<Shape<'a>> {
+//     vec![
+//         Shape {
+//             name: "zeros".to_string(),
+//             f: &|_| 0.0,
+//         },
+//         Shape {
+//             name: "e^(-r^2)".to_string(),
+//             f: &|r: f64| (-r.pow(2.0_f64)).exp(),
+//         },
+//         // {"r", func(r float64) float64 { return r }},
+//         // {"r^2", func(r float64) float64 { return math.Pow(r, 2) }},
+//         // {"1/(sqrt(r^2 + 0.1^2))", func(r float64) float64 { return 1 / math.Sqrt(math.Pow(r, 2)+math.Pow(0.1, 2)) }},
+//     ]
+// }
 
-#[fixture]
-fn all_shapes<'a>(smooth_shapes: Vec<Shape<'a>>) -> Vec<Shape<'a>> {
-    let mut v = smooth_shapes.clone();
-    v.push(Shape::new("random", &|_| random::<f64>() * 10.0));
-    v
-}
+// #[fixture]
+// fn all_shapes<'a>(smooth_shapes: Vec<Shape<'a>>) -> Vec<Shape<'a>> {
+//     let mut v = smooth_shapes.clone();
+//     v.push(Shape::new("random", &|_| random::<f64>() * 10.0));
+//     v
+// }
 
 #[fixture]
 fn radius() -> Array1<f64> {
@@ -93,103 +116,75 @@ fn radius() -> Array1<f64> {
 }
 
 #[fixture]
-// #[once]
+#[once]
 fn transformer(radius: Array1<f64>) -> HankelTransform {
     let order = 0;
     HankelTransform::new_from_r_grid(order, radius)
 }
 
-#[derive(Debug, PartialEq)]
-struct Array1Comp(Array1<f64>);
-
-impl AbsDiffEq for Array1Comp {
-    type Epsilon = f64;
-
-    fn default_epsilon() -> Self::Epsilon {
-        f64::default_epsilon()
-    }
-
-    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        for (a, b) in self.0.iter().zip(other.0.iter()) {
-            if !a.abs_diff_eq(b, epsilon) {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-impl RelativeEq for Array1Comp {
-    fn default_max_relative() -> Self::Epsilon {
-        f64::default_max_relative()
-    }
-
-    fn relative_eq(
-        &self,
-        other: &Self,
-        epsilon: Self::Epsilon,
-        max_relative: Self::Epsilon,
-    ) -> bool {
-        for (a, b) in self.0.iter().zip(other.0.iter()) {
-            if !a.relative_eq(b, epsilon, max_relative) {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 #[rstest]
-fn test_round_trip(transformer: HankelTransform) {
+fn test_round_trip(transformer: &HankelTransform) {
     let fun = random_vec_like(transformer.original_radial_grid());
     let ht = transformer.qdht(&fun, Axis(0));
     let reconstructed = transformer.iqdht(&ht, Axis(0));
     assert_relative_eq!(
-        Array1Comp(fun),
-        Array1Comp(reconstructed),
+        fun.as_slice().unwrap(),
+        reconstructed.as_slice().unwrap(),
         max_relative = -1.0,
         epsilon = 1e-9
     )
 }
-/*
+
 // -------------------
 // Test Interpolations
 // -------------------
-func (suite *RadialSuite) TestRoundTripRInterpolation() {
-    for _, shape := range smoothShapes {
-        order := 0
-        suite.Run(fmt.Sprintf("%v, %v", shape.name, order), func() {
-            transformer := gohank.NewTransformFromRadius(order, &suite.radius)
-
-            // the function must be smoothish for interpolation
-            // to work. Random every point doesn't work
-
-            fun := utils.ApplyVec(shape.f, nil, &suite.radius)
-            transform_func := transformer.ToTransformR(fun)
-            reconstructed_func := transformer.ToOriginalR(transform_func)
-            testutils.AssertInDeltaVecWithEndPoints(suite.T(), reconstructed_func, fun, 1e-4, 1e-3, -1, 2e-5)
-        })
-    }
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_r_interpolation(
+    shape: Shape,
+    radius: Array1<f64>,
+    transformer: &HankelTransform,
+) {
+    // the function must be smoothish for interpolation
+    // to work. Random every point doesn't work
+    let fun = radius.mapv_into(shape.f);
+    let transform_func = transformer.to_transform_r(&fun);
+    let reconstructed_func = transformer.to_original_r(&transform_func);
+    assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, -1.0, 2e-5);
 }
 
-func (suite *RadialSuite) TestRoundTripKInterpolation() {
-    for _, shape := range smoothShapes {
-        order := 0
-        suite.Run(fmt.Sprintf("%v, %v", shape.name, order), func() {
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_k_interpolation(shape: Shape, radius: Array1<f64>) {
+    // the function must be smoothish for interpolation
+    // to work. Random every point doesn't work
+    let order = 0;
+    let k_grid = radius.mapv(|r| r / 10.0);
+    let transformer = HankelTransform::new_from_k_grid(order, k_grid);
 
-            kGrid := utils.ApplyVec(func(r float64) float64 { return r / 10 }, nil, &suite.radius)
-            transformer := gohank.NewTransformFromKGrid(order, kGrid)
-
-            // the function must be smoothish for interpolation
-            // to work. Random every point doesn't work
-            fun := utils.ApplyVec(shape.f, nil, kGrid)
-            transform_func := transformer.ToTransformK(fun)
-            reconstructed_func := transformer.ToOriginalK(transform_func)
-            testutils.AssertInDeltaVecWithEndPoints(suite.T(), fun, reconstructed_func, 1e-4, 1e-3, -1, 2e-7)
-        })
-    }
+    let fun = radius.mapv_into(shape.f);
+    let transform_func = transformer.to_transform_k(&fun);
+    let reconstructed_func = transformer.to_original_k(&transform_func);
+    assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, 0.0, 2e-7);
 }
+// func (suite *RadialSuite) TestRoundTripKInterpolation() {
+//     for _, shape := range smoothShapes {
+//         order := 0
+//         suite.Run(fmt.Sprintf("%v, %v", shape.name, order), func() {
 
+//             kGrid := utils.ApplyVec(func(r float64) float64 { return r / 10 }, nil, &suite.radius)
+//             transformer := gohank.NewTransformFromKGrid(order, kGrid)
+
+//             // the function must be smoothish for interpolation
+//             // to work. Random every point doesn't work
+//             fun := utils.ApplyVec(shape.f, nil, kGrid)
+//             transform_func := transformer.ToTransformK(fun)
+//             reconstructed_func := transformer.ToOriginalK(transform_func)
+//             testutils.AssertInDeltaVecWithEndPoints(suite.T(), fun, reconstructed_func, 1e-4, 1e-3, -1, 2e-7)
+//         })
+//     }
+// }
+/*
 func (t *HankelTestSuite) TestRoundTripWithInterpolation() {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
