@@ -1,4 +1,4 @@
-use approx::{AbsDiffEq, RelativeEq, assert_relative_eq};
+use approx::{AbsDiffEq, RelativeEq, assert_relative_eq, relative_eq};
 use ndarray::{Array1, s};
 
 // ----------------
@@ -68,13 +68,46 @@ pub fn assert_relative_eq_with_end_points(
         max_relative = max_rel_end
     );
 
-    assert_relative_eq!(
+    assert_arrays_equal(
         expected.slice(s![1..n - 2]).as_slice().unwrap(),
         actual.slice(s![1..n - 2]).as_slice().unwrap(),
-        epsilon = eps_body,
-        max_relative = max_rel_body
+        eps_body,
+        max_rel_body,
     );
 }
+
+fn abs_rel_errors(a: f64, b: f64) -> (f64, f64) {
+    let abs_e = (a - b).abs();
+    let rel_e = abs_e / a.abs().max(b.abs());
+    (abs_e, rel_e)
+}
+
+pub(crate) fn assert_arrays_equal(actual: &[f64], expected: &[f64], eps: f64, max_rel: f64) {
+    let actual = actual.to_vec();
+    let expected = expected.to_vec();
+    // let reference = reference.clone().into_vec();
+    // let exp_error = MACHINE_CONSTANTS.abs_error_tolerance;
+
+    for (i, (&act, exp)) in actual.iter().zip(expected).enumerate() {
+        // let ref_val = reference.get(i);
+        // let tolerances = Tolerances::new(act, exp, ref_val, exp_error);
+        if !relative_eq!(act, exp, epsilon = eps, max_relative = max_rel) {
+            let (actual_error, relative_error) = abs_rel_errors(act, exp);
+            panic!(
+                "Failed on matching values at index {i}\n\
+                Actual: {act:e}\n\
+                Expected: {exp:e}\n\
+                \n\
+                Absolute tolerance: {eps:e}\n\
+                Relative tolerance: {max_rel:e}\n\
+                Absolute error: {actual_error:e}\n\
+                Relative error: {relative_error:e}\n\
+                "
+            );
+        };
+    }
+}
+
 /*
 // ---------------
 // MATHS FUNCTIONS
