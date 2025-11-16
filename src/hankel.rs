@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2, Axis, NewAxis, s};
-use ndarray_interp::interp1d::{Interp1DBuilder, Linear};
+use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
 use std::f64::consts::PI;
 
@@ -481,7 +481,7 @@ fn spline(x0: &Array1<f64>, y0: &Array1<f64>, x: &Array1<f64>, _axis: Axis) -> A
     // return f(x)
     let interpolator = Interp1DBuilder::new(y0.clone())
         .x(x0.clone())
-        .strategy(Linear::new().extrapolate(true))
+        .strategy(CubicSpline::new().extrapolate(true))
         .build()
         .unwrap();
     interpolator.interp_array(x).unwrap()

@@ -150,7 +150,7 @@ fn test_round_trip_r_interpolation(
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_r(&fun);
     let reconstructed_func = transformer.to_original_r(&transform_func);
-    assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, -1.0, 2e-5);
+    assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, 0.0, 2e-5);
 }
 
 #[apply(smooth_shapes)]
