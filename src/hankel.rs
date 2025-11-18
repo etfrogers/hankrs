@@ -1,7 +1,7 @@
 use ndarray::{Array1, Array2, Axis, NewAxis, s};
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
-use std::f64::consts::PI;
+use std::{f64::consts::PI, fmt::Debug};
 
 use amos_bessel_rs::{BesselFunType, bessel_j, bessel_zeros};
 
@@ -78,6 +78,16 @@ pub struct HankelTransform {
     t: Array2<f64>,
     jv: Array1<f64>,
     jr: Array1<f64>,
+}
+
+impl Debug for HankelTransform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HankelTransform")
+            .field("order", &self.order)
+            .field("n_points", &self.n_points)
+            .field("max_radius", &self.max_radius)
+            .finish()
+    }
 }
 
 /*
@@ -278,28 +288,16 @@ impl HankelTransform {
     ///
     /// :return: The original radial grid used to construct the object.
     /// :rtype: :class:`numpy.ndarray`
-    pub fn original_radial_grid(&self) -> &Array1<f64> {
-        match self.original_radial_grid {
-            Some(ref rg) => rg,
-            None => panic!(
-                "Attempted to access original_radial_grid on HankelTransform \
-                object that was not constructed with a radial_grid"
-            ),
-        }
+    pub fn original_radial_grid(&self) -> Option<&Array1<f64>> {
+        self.original_radial_grid.as_ref()
     }
 
     /// Return the original k grid used to construct the object, or raise a :class:`ValueError`
     /// if the constructor was not called specifying a ``k_grid`` parameter.
     /// :return: The original k grid used to construct the object.
     /// :rtype: :class:`numpy.ndarray`
-    pub fn original_k_grid(&self) -> &Array1<f64> {
-        match self.original_k_grid {
-            Some(ref kg) => kg,
-            None => panic!(
-                "Attempted to access original_k_grid on HankelTransform \
-                object that was not constructed with a k_grid"
-            ),
-        }
+    pub fn original_k_grid(&self) -> Option<&Array1<f64>> {
+        self.original_k_grid.as_ref()
     }
 
     /// Interpolate a function, assumed to have been given at the original radial
@@ -321,13 +319,22 @@ impl HankelTransform {
     //     :meth:`HankelTransform.qdht` (sampled at ``self.r``)
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_transform_r(&self, function: &Array1<f64> /*,  axis: Axis*/) -> Array1<f64> {
+    pub fn to_transform_r(
+        &self,
+        function: &Array1<f64>, /*,  axis: Axis*/
+    ) -> Result<Array1<f64>, &str> {
         //         let data =     array![0.0,  0.5, 1.0 ];
         // let x =        array![0.0,  1.0, 2.0 ];
         // let query =    array![0.5,  1.0, 1.5 ];
         // let expected = array![0.25, 0.5, 0.75];
-
-        spline(&self.original_radial_grid(), function, &self.r, Axis(0))
+        if let Some(r_grid) = self.original_radial_grid() {
+            Ok(spline(r_grid, function, &self.r, Axis(0)))
+        } else {
+            Err(
+                "Attempted to interpolate onto transform radial grid on HankelTransform \
+                object that was not constructed with a radial grid",
+            )
+        }
     }
 
     // Interpolate a function, assumed to have been given at the Hankel transform points
@@ -347,8 +354,18 @@ impl HankelTransform {
     // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_radial_grid`.
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_original_r(&self, function: &Array1<f64> /* , axis: Axis*/) -> Array1<f64> {
-        spline(&self.r, function, self.original_radial_grid(), Axis(0))
+    pub fn to_original_r(
+        &self,
+        function: &Array1<f64>, /* , axis: Axis*/
+    ) -> Result<Array1<f64>, &str> {
+        if let Some(r_grid) = self.original_radial_grid() {
+            Ok(spline(&self.r, function, r_grid, Axis(0)))
+        } else {
+            Err(
+                "Attempted to interpolate onto original_radial_grid on HankelTransform \
+                object that was not constructed with a r_grid",
+            )
+        }
     }
 
     // Interpolate a function, assumed to have been given at the original k
@@ -369,8 +386,15 @@ impl HankelTransform {
     // :return: Interpolated function suitable to passing to
     //     :meth:`HankelTransform.qdht` (sampled at ``self.kr``)
     // :rtype: :class:`numpy.ndarray`
-    pub fn to_transform_k(&self, function: &Array1<f64>) -> Array1<f64> {
-        return spline(self.original_k_grid(), function, &self.kr, Axis(0));
+    pub fn to_transform_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+        if let Some(k_grid) = self.original_k_grid() {
+            Ok(spline(k_grid, function, &self.kr, Axis(0)))
+        } else {
+            Err(
+                "Attempted to interpolate onto transform k grid on HankelTransform \
+                object that was not constructed with a k_grid",
+            )
+        }
     }
 
     /// Interpolate a function, assumed to have been given at the Hankel transform points
@@ -390,8 +414,15 @@ impl HankelTransform {
     // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_k_grid`.
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_original_k(&self, function: &Array1<f64>) -> Array1<f64> {
-        return spline(&self.kr, function, self.original_k_grid(), Axis(0));
+    pub fn to_original_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+        if let Some(k_grid) = self.original_k_grid() {
+            Ok(spline(&self.kr, function, k_grid, Axis(0)))
+        } else {
+            Err(
+                "Attempted to interpolate onto original_k_grid on HankelTransform \
+                object that was not constructed with a k grid",
+            )
+        }
     }
 
     /// QDHT: Quasi Discrete Hankel Transform

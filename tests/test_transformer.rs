@@ -7,7 +7,7 @@ use num::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
-use std::{f64::consts::PI, mem::MaybeUninit};
+use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit};
 use utils::assert_relative_eq_with_end_points;
 // const pi: f64 = math.PI;
 const MAX_ORDER: i32 = 4;
@@ -28,15 +28,15 @@ const MAX_ORDER: i32 = 4;
 // -------------
 
 // func TestSuite(t *testing.T) {
-// 	for order := 0; order <= maxOrder; order++ {
-// 		hs := new(HankelTestSuite)
+// 	for let order = 0; order <= maxOrder; order++ {
+// 		let hs = new(HankelTestSuite)
 // 		hs.order = order
 // 		suite.Run(t, hs)
 // 	}
 // }
 
 // func TestRadialSuite(t *testing.T) {
-// 	s := new(RadialSuite)
+// 	let s = new(RadialSuite)
 // 	suite.Run(t, s)
 // }
 
@@ -58,6 +58,12 @@ fn random_vec_like(v: &Array1<f64>) -> Array1<f64> {
 struct Shape<'a> {
     name: String,
     f: &'a dyn Fn(f64) -> f64,
+}
+
+impl<'a> Debug for Shape<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Shape").field("name", &self.name).finish()
+    }
 }
 
 impl<'a> Shape<'a> {
@@ -87,21 +93,6 @@ impl<'a> Shape<'a> {
 #[case( Shape {
  name:"1/(sqrt(r^2 + 0.1^2))".to_string(), f: &|r: f64|  1.0 / (r.pow(2.0_f64)+0.1.pow(2.0_f64)).sqrt() })]
 fn smooth_shapes(#[case] shape: Shape) {}
-// fn smooth_shapes<'a>() -> Vec<Shape<'a>> {
-//     vec![
-//         Shape {
-//             name: "zeros".to_string(),
-//             f: &|_| 0.0,
-//         },
-//         Shape {
-//             name: "e^(-r^2)".to_string(),
-//             f: &|r: f64| (-r.pow(2.0_f64)).exp(),
-//         },
-//         // {"r", func(r float64) float64 { return r }},
-//         // {"r^2", func(r float64) float64 { return math.Pow(r, 2) }},
-//         // {"1/(sqrt(r^2 + 0.1^2))", func(r float64) float64 { return 1 / math.Sqrt(math.Pow(r, 2)+math.Pow(0.1, 2)) }},
-//     ]
-// }
 
 // #[fixture]
 // fn all_shapes<'a>(smooth_shapes: Vec<Shape<'a>>) -> Vec<Shape<'a>> {
@@ -124,7 +115,7 @@ fn transformer(radius: Array1<f64>) -> HankelTransform {
 
 #[rstest]
 fn test_round_trip(transformer: &HankelTransform) {
-    let fun = random_vec_like(transformer.original_radial_grid());
+    let fun = random_vec_like(transformer.original_radial_grid().unwrap());
     let ht = transformer.qdht(&fun, Axis(0));
     let reconstructed = transformer.iqdht(&ht, Axis(0));
     assert_relative_eq!(
@@ -140,6 +131,7 @@ fn test_round_trip(transformer: &HankelTransform) {
 // -------------------
 #[apply(smooth_shapes)]
 #[rstest]
+#[trace]
 fn test_round_trip_r_interpolation(
     shape: Shape,
     radius: Array1<f64>,
@@ -148,13 +140,14 @@ fn test_round_trip_r_interpolation(
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
     let fun = radius.mapv_into(shape.f);
-    let transform_func = transformer.to_transform_r(&fun);
-    let reconstructed_func = transformer.to_original_r(&transform_func);
+    let transform_func = transformer.to_transform_r(&fun).unwrap();
+    let reconstructed_func = transformer.to_original_r(&transform_func).unwrap();
     assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, 0.0, 2e-5);
 }
 
 #[apply(smooth_shapes)]
 #[rstest]
+#[trace]
 fn test_round_trip_k_interpolation(shape: Shape, radius: Array1<f64>) {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
@@ -163,75 +156,67 @@ fn test_round_trip_k_interpolation(shape: Shape, radius: Array1<f64>) {
     let transformer = HankelTransform::new_from_k_grid(order, k_grid);
 
     let fun = radius.mapv_into(shape.f);
-    let transform_func = transformer.to_transform_k(&fun);
-    let reconstructed_func = transformer.to_original_k(&transform_func);
+    let transform_func = transformer.to_transform_k(&fun).unwrap();
+    let reconstructed_func = transformer.to_original_k(&transform_func).unwrap();
     assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, 0.0, 2e-7);
 }
-// func (suite *RadialSuite) TestRoundTripKInterpolation() {
-//     for _, shape := range smoothShapes {
-//         order := 0
-//         suite.Run(fmt.Sprintf("%v, %v", shape.name, order), func() {
 
-//             kGrid := utils.ApplyVec(func(r float64) float64 { return r / 10 }, nil, &suite.radius)
-//             transformer := gohank.NewTransformFromKGrid(order, kGrid)
-
-//             // the function must be smoothish for interpolation
-//             // to work. Random every point doesn't work
-//             fun := utils.ApplyVec(shape.f, nil, kGrid)
-//             transform_func := transformer.ToTransformK(fun)
-//             reconstructed_func := transformer.ToOriginalK(transform_func)
-//             testutils.AssertInDeltaVecWithEndPoints(suite.T(), fun, reconstructed_func, 1e-4, 1e-3, -1, 2e-7)
-//         })
-//     }
-// }
-/*
-func (t *HankelTestSuite) TestRoundTripWithInterpolation() {
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_with_interpolation(
+    shape: Shape,
+    radius: Array1<f64>,
+    transformer: &HankelTransform,
+) {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    for _, shape := range smoothShapes {
-        t.Run(fmt.Sprintf("%v, %v", shape.name, t.order), func() {
-            fun := utils.ApplyVec(shape.f, nil, &t.radius)
-            fun_hr := t.transformer.ToTransformR(fun)
-            ht := t.transformer.QDHT(fun_hr)
-            reconstructed_hr := t.transformer.IQDHT(ht)
-            reconstructed := t.transformer.ToOriginalR(reconstructed_hr)
+    let fun = radius.mapv_into(shape.f);
+    let fun_hr = transformer.to_transform_r(&fun).unwrap();
+    let ht = transformer.qdht(&fun_hr, Axis(0));
+    let reconstructed_hr = transformer.iqdht(&ht, Axis(0));
+    let reconstructed = transformer.to_original_r(&reconstructed_hr).unwrap();
 
-            aTolEnd := 1e-3
-            rTolBody := 2e-4
-            aTolBody := -1.
-            rTolEnd := -1.
-            if shape.name == "1/(sqrt(r^2 + 0.1^2))" {
-                rTolEnd = 3e-2
-                rTolBody = 2e-3
-            }
-            if shape.name == "r^2" {
-                rTolBody = -1.
-                aTolBody = 2e-4
-            }
-            testutils.AssertInDeltaVecWithEndPoints(t.T(), fun, reconstructed, rTolBody, rTolEnd, aTolBody, aTolEnd)
-        })
+    let a_tol_end = 1e-3;
+    let mut r_tol_body = 2e-4;
+    let mut a_tol_body = -1.;
+    let mut r_tol_end = -1.;
+    if shape.name == "1/(sqrt(r^2 + 0.1^2))" {
+        r_tol_end = 3e-2;
+        r_tol_body = 2e-3;
     }
+    if shape.name == "r^2" {
+        r_tol_body = -1.0;
+        a_tol_body = 2e-4
+    }
+    assert_relative_eq_with_end_points(
+        fun,
+        reconstructed,
+        r_tol_body,
+        r_tol_end,
+        a_tol_body,
+        a_tol_end,
+    )
 }
 
-func TestOriginalRKGrid(t *testing.T) {
-    r_1d := utils.Linspace(0, 1, 10)
-    var k_1d mat.VecDense
-    k_1d.CloneFromVec(r_1d)
-    transformer := gohank.NewTransform(0, 1., 10)
-    assert.Panics(t, func() { transformer.OriginalRadialGrid() })
-    assert.Panics(t, func() { transformer.OriginalKGrid() })
+#[rstest]
+fn test_original_rk_grid() {
+    let r_1d = Array1::linspace(0.0, 1.0, 10);
+    let k_1d = r_1d.clone();
+    let transformer = HankelTransform::new(0, 1., 10);
+    assert!(transformer.original_radial_grid().is_none());
+    assert!(transformer.original_k_grid().is_none());
 
-    transformer = gohank.NewTransformFromRadius(0, r_1d)
+    let transformer_r = HankelTransform::new_from_r_grid(0, r_1d);
     // no error
-    _ = transformer.OriginalRadialGrid()
-    assert.Panics(t, func() { transformer.OriginalKGrid() })
+    assert!(transformer_r.original_radial_grid().is_some());
+    assert!(transformer_r.original_k_grid().is_none());
 
-    transformer = gohank.NewTransformFromKGrid(0, &k_1d)
+    let transformer_k = HankelTransform::new_from_k_grid(0, k_1d);
     // no error
-    _ = transformer.OriginalKGrid()
-    assert.Panics(t, func() { transformer.OriginalRadialGrid() })
+    assert!(transformer_k.original_k_grid().is_some());
+    assert!(transformer_k.original_radial_grid().is_none())
 }
-
+/*
 // ---------------
 // Test Invariants
 // ---------------
@@ -240,15 +225,15 @@ func (t *HankelTestSuite) TestParsevalsTheorem() {
     // i.e. if we pass in the unscaled fr (=Fr), the unscaled fv (=Fv)should have the
     // same sum of abs val^2. Here the unscaled transform is simply given by
     // ht = transformer.T @ func
-    for _, shape := range all_shapes {
+    for _, let shape = range all_shapes {
         t.Run(fmt.Sprintf("%v, %v", shape.name, t.order), func() {
-            fun := utils.ApplyVec(shape.f, nil, &t.radius)
-            intensityBefore := utils.ApplyVec(intensity, nil, fun)
-            energyBefore := mat.Sum(intensityBefore)
-            ht := mat.NewVecDense(fun.Len(), nil)
+            let fun = utils.ApplyVec(shape.f, nil, &t.radius)
+            let intensityBefore = utils.ApplyVec(intensity, nil, fun)
+            let energyBefore = mat.Sum(intensityBefore)
+            let ht = mat.NewVecDense(fun.Len(), nil)
             ht.MulVec(&t.transformer.T, fun)
-            intensityAfter := utils.ApplyVec(intensity, nil, ht)
-            energyAfter := mat.Sum(intensityAfter)
+            let intensityAfter = utils.ApplyVec(intensity, nil, ht)
+            let energyAfter = mat.Sum(intensityAfter)
             assert.InDelta(t.T(), energyBefore, energyAfter, 1e-8)
         })
     }
@@ -259,30 +244,30 @@ func intensity(v float64) float64 {
 }
 
 func (t *HankelTestSuite) TestEnergyConservation() {
-    shapes := []struct {
+    let shapes = []struct {
         name string
         f    func(mat.Vector, float64, int) mat.Vector
     }{{"Jinc", testutils.GeneralisedJinc},
         {"Top Hat", testutils.GeneralisedTopHat}}
 
-    integrateOverR := func(r, y *mat.VecDense) float64 {
-        integrand := mat.NewVecDense(y.Len(), nil)
-        for i := 0; i < y.Len(); i++ {
+    let integrateOverR = func(r, y *mat.VecDense) float64 {
+        let integrand = mat.NewVecDense(y.Len(), nil)
+        for let i = 0; i < y.Len(); i++ {
             integrand.SetVec(i, 2*pi*r.AtVec(i)*y.AtVec(i))
         }
         return integrate.Trapezoidal(r.RawVector().Data, integrand.RawVector().Data)
     }
 
-    for _, shape := range shapes {
+    for _, let shape = range shapes {
         t.Run(fmt.Sprintf("%v, %v", shape.name, t.order), func() {
-            transformer := gohank.NewTransform(t.transformer.Order(), 10, t.transformer.NPoints())
-            fun := shape.f(transformer.Radius(), 0.5, transformer.Order())
-            intensityBefore := utils.ApplyVec(intensity, nil, fun).(*mat.VecDense)
-            energyBefore := integrateOverR(transformer.Radius().(*mat.VecDense), intensityBefore)
+            let transformer = gohank.NewTransform(t.transformer.Order(), 10, t.transformer.NPoints())
+            let fun = shape.f(transformer.Radius(), 0.5, transformer.Order())
+            let intensityBefore = utils.ApplyVec(intensity, nil, fun).(*mat.VecDense)
+            let energyBefore = integrateOverR(transformer.Radius().(*mat.VecDense), intensityBefore)
 
-            ht := transformer.QDHT(fun)
-            intensityAfter := utils.ApplyVec(intensity, nil, ht).(*mat.VecDense)
-            energyAfter := integrateOverR(transformer.V().(*mat.VecDense), intensityAfter)
+            let ht = transformer.QDHT(fun)
+            let intensityAfter = utils.ApplyVec(intensity, nil, ht).(*mat.VecDense)
+            let energyAfter = integrateOverR(transformer.V().(*mat.VecDense), intensityAfter)
 
             assert.InDelta(t.T(), energyBefore, energyAfter, 0.006)
         })
@@ -294,23 +279,23 @@ func (t *HankelTestSuite) TestEnergyConservation() {
 // -------------------
 
 func (t *HankelTestSuite) TestJinc() {
-    for _, a := range []float64{1, 0.7, 0.1} {
+    for _, let a = range []float64{1, 0.7, 0.1} {
         t.Run(fmt.Sprint(a), func() {
-            f := testutils.GeneralisedJinc(t.transformer.Radius(), a, t.order)
-            expected_ht := testutils.GeneralisedTopHat(t.transformer.V(), a, t.order)
-            actual_ht := t.transformer.QDHT(f)
-            err := testutils.MeanAbsError(expected_ht, actual_ht)
+            let f = testutils.GeneralisedJinc(t.transformer.Radius(), a, t.order)
+            let expected_ht = testutils.GeneralisedTopHat(t.transformer.V(), a, t.order)
+            let actual_ht = t.transformer.QDHT(f)
+            let err = testutils.MeanAbsError(expected_ht, actual_ht)
             assert.Less(t.T(), err, 1e-3)
         })
     }
 }
 
 func (t *HankelTestSuite) TestTopHat() {
-    for _, a := range []float64{1, 1.5, 0.1} {
+    for _, let a = range []float64{1, 1.5, 0.1} {
         t.Run(fmt.Sprint(a), func() {
-            f := testutils.GeneralisedTopHat(t.transformer.Radius(), a, t.order)
-            expected_ht := testutils.GeneralisedJinc(t.transformer.V(), a, t.order)
-            actual_ht := t.transformer.QDHT(f)
+            let f = testutils.GeneralisedTopHat(t.transformer.Radius(), a, t.order)
+            let expected_ht = testutils.GeneralisedJinc(t.transformer.V(), a, t.order)
+            let actual_ht = t.transformer.QDHT(f)
             assert.Less(t.T(), testutils.MeanAbsError(expected_ht, actual_ht), 1e-3)
         })
     }
@@ -320,16 +305,16 @@ func (t *RadialSuite) TestGaussian() {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    transformer := gohank.NewTransformFromRadius(0, &t.radius)
-    for _, a := range []float64{2, 5, 10} {
+    let transformer = gohank.NewTransformFromRadius(0, &t.radius)
+    for _, let a = range []float64{2, 5, 10} {
         t.Run(fmt.Sprint(a), func() {
-            f := mat.NewVecDense(transformer.Radius().Len(), nil)
-            a2 := math.Pow(a, 2)
+            let f = mat.NewVecDense(transformer.Radius().Len(), nil)
+            let a2 = math.Pow(a, 2)
             utils.ApplyVec(func(r float64) float64 { return math.Exp(-a2 * math.Pow(r, 2)) }, f, transformer.Radius())
-            expected_ht := mat.NewVecDense(transformer.Radius().Len(), nil)
+            let expected_ht = mat.NewVecDense(transformer.Radius().Len(), nil)
             utils.ApplyVec(func(kr float64) float64 { return 2 * pi * (1 / (2 * a2)) * math.Exp(-math.Pow(kr, 2)/(4*a2)) },
                 expected_ht, transformer.Kr())
-            actual_ht := transformer.QDHT(f)
+            let actual_ht = transformer.QDHT(f)
             testutils.AssertInDeltaVec(t.T(), expected_ht, actual_ht, -1, 1e-9)
         })
     }
@@ -339,15 +324,15 @@ func (t *RadialSuite) TestInverseGaussian() {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    transformer := gohank.NewTransformFromRadius(0, &t.radius)
-    for _, a := range []float64{2, 5, 10} {
+    let transformer = gohank.NewTransformFromRadius(0, &t.radius)
+    for _, let a = range []float64{2, 5, 10} {
         t.Run(fmt.Sprint(a), func() {
-            ht := mat.NewVecDense(transformer.Radius().Len(), nil)
-            a2 := math.Pow(a, 2)
+            let ht = mat.NewVecDense(transformer.Radius().Len(), nil)
+            let a2 = math.Pow(a, 2)
             utils.ApplyVec(func(kr float64) float64 { return 2 * pi * (1 / (2 * a2)) * math.Exp(-math.Pow(kr, 2)/(4*a2)) }, ht, transformer.Kr())
             // ht = 2 * nppi * (1 / (2 * a * *2)) * np.exp(-transformer.kr**2/(4*a**2))
-            actual_f := transformer.IQDHT(ht)
-            expected_f := mat.NewVecDense(transformer.Radius().Len(), nil)
+            let actual_f = transformer.IQDHT(ht)
+            let expected_f = mat.NewVecDense(transformer.Radius().Len(), nil)
             utils.ApplyVec(func(r float64) float64 { return math.Exp(-a2 * math.Pow(r, 2)) }, expected_f, transformer.Radius())
             // expected_f = np.exp(-a * *2 * transformer.r * *2)
             testutils.AssertInDeltaVec(t.T(), expected_f, actual_f, -1, 1e-9)
@@ -398,21 +383,21 @@ func (t *RadialSuite) Test1OverR2plusZ2() {
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
     t.T().Skip("skipping as it requires a modifed bessel function of the second kind")
-    transformer := gohank.NewTransform(0, 50, 1024)
-    for _, a := range []float64{2, 5, 10} {
+    let transformer = gohank.NewTransform(0, 50, 1024)
+    for _, let a = range []float64{2, 5, 10} {
         t.Run(fmt.Sprint(a), func() {
-            f := mat.NewVecDense(t.radius.Len(), nil)
+            let f = mat.NewVecDense(t.radius.Len(), nil)
             utils.ApplyVec(func(r float64) float64 { return 1 / (math.Pow(r, 2) + math.Pow(a, 2)) }, f, &t.radius)
             // f = 1 / (transformer.r**2 + a**2)
             // kn cannot handle complex arguments, so a must be real
-            expected_ht := mat.NewVecDense(t.radius.Len(), nil)
+            let expected_ht = mat.NewVecDense(t.radius.Len(), nil)
             utils.ApplyVec(func(k float64) float64 { return 2 * pi * math.Y0(a*k) }, expected_ht, &t.radius)
             //2 * np.pi * scipy_bessel.kn(0, a*transformer.kr)
-            actual_ht := transformer.QDHT(f)
+            let actual_ht = transformer.QDHT(f)
             // These tolerances are pretty loose, but there seems to be large
             // error here
             testutils.AssertInDeltaVec(t.T(), expected_ht, actual_ht, -1, 0.01)
-            err := testutils.MeanAbsError(expected_ht, actual_ht)
+            let err = testutils.MeanAbsError(expected_ht, actual_ht)
             assert.Less(t.T(), err, 4e-3)
         })
     }
@@ -430,17 +415,17 @@ func TestSinc(t *testing.T) {
       Manuel Guizar-Sicairos and Julio C. Guitierrez-Vega
       J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
     */
-    for _, p := range []int{1, 4} {
+    for _, let p = range []int{1, 4} {
         t.Run(fmt.Sprint(p), func(t *testing.T) {
-            transformer := gohank.NewTransform(p, 3, 256)
-            v := transformer.V()
-            gamma := 5.
-            fun := mat.NewVecDense(v.Len(), nil)
+            let transformer = gohank.NewTransform(p, 3, 256)
+            let v = transformer.V()
+            let gamma = 5.
+            let fun = mat.NewVecDense(v.Len(), nil)
             utils.ApplyVec(func(r float64) float64 { return sinc(2.0 * pi * gamma * r) }, fun, transformer.Radius())
-            expected_ht := mat.NewVecDense(fun.Len(), nil)
+            let expected_ht = mat.NewVecDense(fun.Len(), nil)
 
             utils.ApplyVec(func(v_ float64) float64 {
-                pf := float64(p)
+                let pf = float64(p)
                 if v_ < gamma {
                     return (math.Pow(v_, pf) * math.Cos(pf*pi/2) /
                         (2 * pi * gamma * math.Sqrt(math.Pow(gamma, 2)-math.Pow(v_, 2)) *
@@ -450,13 +435,13 @@ func TestSinc(t *testing.T) {
                         (2 * pi * gamma * math.Sqrt(math.Pow(v_, 2)-math.Pow(gamma, 2))))
                 }
             }, expected_ht, v)
-            ht := transformer.QDHT(fun)
-            maxHT := slices.Max(ht.(*mat.VecDense).RawVector().Data)
-            for i := 0; i < expected_ht.Len(); i++ {
+            let ht = transformer.QDHT(fun)
+            let maxHT = slices.Max(ht.(*mat.VecDense).RawVector().Data)
+            for let i = 0; i < expected_ht.Len(); i++ {
                 // use the same error measure as the paper
-                dynamical_error := 20 * math.Log10(math.Abs(expected_ht.AtVec(i)-ht.AtVec(i))/maxHT)
+                let dynamical_error = 20 * math.Log10(math.Abs(expected_ht.AtVec(i)-ht.AtVec(i))/maxHT)
 
-                threshold := -10.
+                let threshold = -10.
                 if v.AtVec(i) > gamma*1.25 || v.AtVec(i) < gamma*0.75 {
                     // threshold is lower for areas not close to gamma
                     threshold = -35
@@ -474,20 +459,20 @@ func TestSinc(t *testing.T) {
 
 // Internal test of generalised jinc func
 func TestGeneralisedJincZero(t *testing.T) {
-    for _, a := range []float64{1, 0.7, 0.1, 136., 1e-6} {
-        for p := -10; p < 10; p++ {
+    for _, let a = range []float64{1, 0.7, 0.1, 136., 1e-6} {
+        for let p = -10; p < 10; p++ {
             t.Run(fmt.Sprintf("%f, %d", a, p), func(t *testing.T) {
                 if p == -1 {
                     t.Skip("Skipping test for p=-1 as 1/eps does not go to inf correctly")
                 }
-                eps := 1e-200
+                let eps = 1e-200
                 if p == -2 {
                     eps = 1e-5 / a
                 }
-                v := mat.NewVecDense(2, []float64{0, eps})
-                val := testutils.GeneralisedJinc(v, a, p)
+                let v = mat.NewVecDense(2, []float64{0, eps})
+                let val = testutils.GeneralisedJinc(v, a, p)
 
-                tolerance := 2e-9
+                let tolerance = 2e-9
                 assert.InDelta(t, val.AtVec(0), val.AtVec(1), tolerance)
             })
         }
