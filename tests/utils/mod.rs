@@ -1,3 +1,6 @@
+use std::f64::{INFINITY, consts::PI};
+
+use amos_bessel_rs::bessel_j;
 use approx::{AbsDiffEq, RelativeEq, assert_relative_eq, relative_eq};
 use ndarray::{Array1, s};
 
@@ -108,51 +111,47 @@ pub(crate) fn assert_arrays_equal(actual: &[f64], expected: &[f64], eps: f64, ma
     }
 }
 
-/*
 // ---------------
 // MATHS FUNCTIONS
 // ----------------
-func GeneralisedTopHat(r mat.Vector, a float64, p int) mat.Vector {
-    f := utils.ApplyVec(func(val float64) float64 { return generalisedTopHatF(val, a, p) }, nil, r)
-    return f
+pub fn generalised_top_hat(r: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
+    r.mapv(|r| generalised_top_hat_f(r, a, p))
+    // f := utils.ApplyVec(func(val f64) f64 { return generalisedTopHatF(val, a, p) }, nil, r)
+    // return f
 }
 
-func generalisedTopHatF(r float64, a float64, p int) float64 {
-    var val float64
+fn generalised_top_hat_f(r: f64, a: f64, p: i32) -> f64 {
+    // var val f64
     if r <= a {
-        val = math.Pow(r, float64(p))
+        r.powi(p) //math.Pow(r, f64(p))
+    } else {
+        0.0
     }
     // othwerise 0
 
-    return val
+    // return val
 }
 
-func GeneralisedJinc(v mat.Vector, a float64, p int) mat.Vector {
-    f := utils.ApplyVec(func(val float64) float64 { return generalisedJincF(val, a, p) }, nil, v)
-    return f
+pub fn generalised_jinc(v: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
+    v.mapv(|v| generalised_jinc_f(v, a, p))
+
+    // f := utils.ApplyVec(func(val f64) f64 { return generalisedJincF(val, a, p) }, nil, v)
+    // return f
 }
 
-func generalisedJincF(v float64, a float64, p int) float64 {
-
-    var val float64
+fn generalised_jinc_f(v: f64, a: f64, p: i32) -> f64 {
+    // var val f64
     if v == 0. {
-        switch {
-        case p == -1:
-            val = math.Inf(1)
-        case p == -2:
-            val = -math.Pi
-        case p == 0:
-            val = math.Pi * math.Pow(a, 2)
-        default:
-            val = 0
+        match p {
+            -1 => INFINITY,
+            -2 => -PI,
+            0 => PI * a.powi(2),
+            _ => 0.0,
         }
     } else {
-        prefactor := math.Pow(a, float64(p+1))
-        x := 2 * math.Pi * a * v
-        j := math.Jn(p+1, x)
-        val = prefactor * j / v
+        let prefactor = a.powi(p + 1);
+        let x = 2.0 * PI * a * v;
+        let j = bessel_j(p + 1, x).unwrap();
+        prefactor * j / v
     }
-
-    return val
 }
-*/

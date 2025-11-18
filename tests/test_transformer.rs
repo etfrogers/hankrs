@@ -8,46 +8,9 @@ use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
 use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit};
-use utils::assert_relative_eq_with_end_points;
+use utils::{assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat};
 // const pi: f64 = math.PI;
 const MAX_ORDER: i32 = 4;
-
-// type RadialSuite struct {
-// 	suite.Suite
-// 	radius mat.VecDense
-// }
-
-// type HankelTestSuite struct {
-// 	RadialSuite
-// 	transformer gohank.HankelTransform
-// 	order       int
-// }
-
-// -------------
-// SUITE RUNNERS
-// -------------
-
-// func TestSuite(t *testing.T) {
-// 	for let order = 0; order <= maxOrder; order++ {
-// 		let hs = new(HankelTestSuite)
-// 		hs.order = order
-// 		suite.Run(t, hs)
-// 	}
-// }
-
-// func TestRadialSuite(t *testing.T) {
-// 	let s = new(RadialSuite)
-// 	suite.Run(t, s)
-// }
-
-// func (suite *HankelTestSuite) SetupTest() {
-// 	suite.radius = *utils.Linspace(0, 3, 1024)
-// 	suite.transformer = gohank.NewTransformFromRadius(suite.order, &suite.radius)
-// }
-
-// func (suite *RadialSuite) SetupTest() {
-// 	suite.radius = *utils.Linspace(0, 3, 1024)
-// }
 
 fn random_vec_like(v: &Array1<f64>) -> Array1<f64> {
     let shape = v.dim();
@@ -78,28 +41,19 @@ impl<'a> Shape<'a> {
 // static SMOOTH_SHAPES: LazyLock<Vec<Shape>> = LazyLock::new(|| {
 #[template]
 #[rstest]
-#[case(Shape {
-            name: "zeros".to_string(),
-            f: &|_| 0.0,
-        },)]
-#[case( Shape {
-            name: "e^(-r^2)".to_string(),
-            f: &|r: f64| (-r.pow(2.0_f64)).exp(),
-        })]
-#[case( Shape {
-        name:"r".to_string(), f: &|r: f64| r })]
-#[case( Shape {
-        name:"r^2".to_string(), f: &|r: f64|  r.pow(2.0) })]
-#[case( Shape {
- name:"1/(sqrt(r^2 + 0.1^2))".to_string(), f: &|r: f64|  1.0 / (r.pow(2.0_f64)+0.1.pow(2.0_f64)).sqrt() })]
+#[case(Shape::new("zeros", &|_| 0.0,))]
+#[case(Shape::new("e^(-r^2)", &|r: f64| (-r.pow(2.0_f64)).exp(),))]
+#[case(Shape::new("r",  &|r: f64| r ))]
+#[case(Shape::new("r^2",  &|r: f64|  r.pow(2.0) ))]
+#[case(Shape::new("1/(sqrt(r^2 + 0.1^2))",
+                  &|r: f64|  1.0 / (r.pow(2.0_f64)+0.1.pow(2.0_f64)).sqrt() ))]
 fn smooth_shapes(#[case] shape: Shape) {}
 
-// #[fixture]
-// fn all_shapes<'a>(smooth_shapes: Vec<Shape<'a>>) -> Vec<Shape<'a>> {
-//     let mut v = smooth_shapes.clone();
-//     v.push(Shape::new("random", &|_| random::<f64>() * 10.0));
-//     v
-// }
+#[template]
+#[rstest]
+#[apply(smooth_shapes)]
+
+fn all_shapes(#[case] shape: Shape) {}
 
 #[fixture]
 fn radius() -> Array1<f64> {
@@ -216,64 +170,60 @@ fn test_original_rk_grid() {
     assert!(transformer_k.original_k_grid().is_some());
     assert!(transformer_k.original_radial_grid().is_none())
 }
-/*
+
 // ---------------
 // Test Invariants
 // ---------------
-func (t *HankelTestSuite) TestParsevalsTheorem() {
+#[apply(smooth_shapes)]
+#[case(Shape::new("random", &|_| random::<f64>()*10.0))]
+#[rstest]
+fn test_parsevals_theorem(shape: Shape, transformer: &HankelTransform, radius: Array1<f64>) {
     // As per equation 11 of Guizar-Sicairos, the UNSCALED transform is unitary,
     // i.e. if we pass in the unscaled fr (=Fr), the unscaled fv (=Fv)should have the
     // same sum of abs val^2. Here the unscaled transform is simply given by
     // ht = transformer.T @ func
-    for _, let shape = range all_shapes {
-        t.Run(fmt.Sprintf("%v, %v", shape.name, t.order), func() {
-            let fun = utils.ApplyVec(shape.f, nil, &t.radius)
-            let intensityBefore = utils.ApplyVec(intensity, nil, fun)
-            let energyBefore = mat.Sum(intensityBefore)
-            let ht = mat.NewVecDense(fun.Len(), nil)
-            ht.MulVec(&t.transformer.T, fun)
-            let intensityAfter = utils.ApplyVec(intensity, nil, ht)
-            let energyAfter = mat.Sum(intensityAfter)
-            assert.InDelta(t.T(), energyBefore, energyAfter, 1e-8)
-        })
-    }
+    let fun = radius.mapv(shape.f); // shape.f, nil, &t.radius)
+    let intensity_before = fun.mapv(intensity);
+    let energy_before = intensity_before.sum();
+    let ht = transformer.transform_matrix() * fun;
+    let intensity_after = ht.mapv(intensity);
+    let energy_after = intensity_after.sum();
+    assert_relative_eq!(energy_before, energy_after, epsilon = 1e-8);
 }
 
-func intensity(v float64) float64 {
-    return math.Pow(math.Abs(v), 2)
+fn intensity(v: f64) -> f64 {
+    v.abs().powf(2.0)
 }
 
-func (t *HankelTestSuite) TestEnergyConservation() {
-    let shapes = []struct {
-        name string
-        f    func(mat.Vector, float64, int) mat.Vector
-    }{{"Jinc", testutils.GeneralisedJinc},
-        {"Top Hat", testutils.GeneralisedTopHat}}
+#[rstest]
+#[case("Jinc", &generalised_jinc)]
+#[case("Top Hat", &generalised_top_hat)]
 
-    let integrateOverR = func(r, y *mat.VecDense) float64 {
-        let integrand = mat.NewVecDense(y.Len(), nil)
-        for let i = 0; i < y.Len(); i++ {
-            integrand.SetVec(i, 2*pi*r.AtVec(i)*y.AtVec(i))
-        }
-        return integrate.Trapezoidal(r.RawVector().Data, integrand.RawVector().Data)
-    }
+fn test_energy_conservation(
+    #[case] _shape_name: &str,
+    #[case] func: &dyn Fn(&Array1<f64>, f64, i32) -> Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order: i32,
+) {
+    let integrate_over_r = |r: &Array1<f64>, y| -> f64 {
+        let integrand: Array1<f64> = 2.0 * PI * r * y;
+        (0..(r.len() - 1))
+            .map(|i| (r[i + 1] - r[i]) * (integrand[i + 1] + integrand[i]) / 2.0)
+            .sum()
+    };
 
-    for _, let shape = range shapes {
-        t.Run(fmt.Sprintf("%v, %v", shape.name, t.order), func() {
-            let transformer = gohank.NewTransform(t.transformer.Order(), 10, t.transformer.NPoints())
-            let fun = shape.f(transformer.Radius(), 0.5, transformer.Order())
-            let intensityBefore = utils.ApplyVec(intensity, nil, fun).(*mat.VecDense)
-            let energyBefore = integrateOverR(transformer.Radius().(*mat.VecDense), intensityBefore)
+    let transformer = HankelTransform::new(order, 10.0, 1024);
+    let fun = func(transformer.radius(), 0.5, order);
 
-            let ht = transformer.QDHT(fun)
-            let intensityAfter = utils.ApplyVec(intensity, nil, ht).(*mat.VecDense)
-            let energyAfter = integrateOverR(transformer.V().(*mat.VecDense), intensityAfter)
+    let intensity_before = fun.mapv(intensity);
+    let energy_before = integrate_over_r(transformer.radius(), intensity_before);
 
-            assert.InDelta(t.T(), energyBefore, energyAfter, 0.006)
-        })
-    }
+    let ht = transformer.qdht(&fun, Axis(0));
+    let intensity_after = ht.mapv(intensity);
+    let energy_after = integrate_over_r(transformer.frequency(), intensity_after);
+
+    assert_relative_eq!(energy_before, energy_after, epsilon = 0.006);
 }
-
+/*
 // -------------------
 // Test known HT pairs
 // -------------------

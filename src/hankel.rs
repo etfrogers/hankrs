@@ -73,6 +73,7 @@ pub struct HankelTransform {
     alpha_n1: f64,
     r: Array1<f64>,
     kr: Array1<f64>,
+    v: Array1<f64>,
     v_max: f64,
     s: f64,
     t: Array2<f64>,
@@ -214,7 +215,7 @@ impl HankelTransform {
         // Calculate co-ordinate vectors
         let r = alpha.clone() * max_radius / alpha_n1;
         let v = alpha.clone() / (2.0 * PI * max_radius);
-        let kr = 2.0 * PI * v;
+        let kr = 2.0 * PI * v.clone();
         let v_max = alpha_n1 / (2.0 * PI * max_radius);
         let s = alpha_n1;
 
@@ -224,7 +225,7 @@ impl HankelTransform {
         // self.T = 2 * jp / ((jp1[:, np.newaxis] @ jp1[np.newaxis, :]) * self.S)
         // self.JR = jp1 / self.max_radius
         // self.JV = jp1 / self.v_max
-        let alpha_row: Array2<_> = alpha.clone().into_shape((n_points, 1)).unwrap();
+        let alpha_row = alpha.to_shape((n_points, 1)).unwrap();
         // let alpha_row: Array2<_> = alpha.slice(s![.., NewAxis]).to_owned();
         let alpha_col: Array2<_> = alpha.slice(s![NewAxis, ..]).to_owned();
         let alpha_matrix = alpha_row.dot(&alpha_col);
@@ -263,6 +264,7 @@ impl HankelTransform {
             alpha_n1,
             r,
             kr,
+            v,
             v_max,
             s,
             t,
@@ -504,6 +506,18 @@ impl HankelTransform {
         } else {
             (&self.jr, &self.jv)
         }
+    }
+
+    pub fn transform_matrix(&self) -> &Array2<f64> {
+        &self.t
+    }
+
+    pub fn radius(&self) -> &Array1<f64> {
+        &self.r
+    }
+
+    pub fn frequency(&self) -> &Array1<f64> {
+        &self.v
     }
 }
 
