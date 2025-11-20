@@ -322,23 +322,34 @@ fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) 
 }
 
 // @pytest.mark.parametrize('axis', [0, 1])
-// func (t *HankelTestSuit) test_inverse_gaussian_2d(axis int, radius, np.ndarray){
-//     // Note the definition in Guizar-Sicairos varies by 2*pi in
-//     // both scaling of the argument (so use kr rather than v) and
-//     // scaling of the magnitude.
-//     transformer = HankelTransform(order=0, radial_grid=radius)
-//     a = np.linspace(2, 10)
-//     dims_a = np.ones(2, np.int)
-//     dims_a[1-axis] = len(a)
-//     dims_r = np.ones(2, np.int)
-//     dims_r[axis] = len(transformer.r)
-//     a_reshaped = np.reshape(a, dims_a)
-//     r_reshaped = np.reshape(transformer.r, dims_r)
-//     kr_reshaped = np.reshape(transformer.kr, dims_r)
-//     ht = 2*np.pi*(1 / (2 * a_reshaped**2)) * np.exp(-kr_reshaped**2 / (4 * a_reshaped**2))
-//     actual_f = transformer.iqdht(ht, axis=axis)
-//     expected_f = np.exp(-a_reshaped ** 2 * r_reshaped ** 2)
-//     assert np.allclose(expected_f, actual_f)
+#[rstest]
+fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) {
+    // Note the definition in Guizar-Sicairos varies by 2*pi in
+    // both scaling of the argument (so use kr rather than v) and
+    // scaling of the magnitude.
+    let a = Array1::linspace(2.0, 10.0, 50);
+    let mut dims_a = Array1::ones(2);
+    dims_a[1 - axis] = a.len();
+    let mut dims_r = Array1::ones(2);
+    dims_r[axis] = transformer.radius().len();
+    let a_reshaped: ndarray::ArrayBase<ndarray::CowRepr<'_, f64>, _> =
+        a.to_shape(dims_a.as_slice().unwrap()).unwrap();
+    let r_reshaped = transformer
+        .radius()
+        .to_shape(dims_r.as_slice().unwrap())
+        .unwrap();
+    let kr_reshaped = transformer
+        .kr()
+        .to_shape(dims_r.as_slice().unwrap())
+        .unwrap();
+    let ht = 2.0
+        * PI
+        * (1.0 / (2.0 * a_reshaped.powi(2)))
+        * (-kr_reshaped.powi(2) / (4.0 * a_reshaped.powi(2))).exp();
+    let actual_f = transformer.iqdht(&ht, Axis(axis));
+    let expected_f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
+    assert_arrays_equal(&expected_f, &actual_f, 1e-8, 1e-5);
+}
 /*
 #[rstest]
 fn Test1OverR2plusZ2() {
