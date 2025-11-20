@@ -49,8 +49,8 @@ impl RelativeEq for _Array1Comp {
 }
 
 pub fn assert_relative_eq_with_end_points(
-    expected: Array1<f64>,
-    actual: Array1<f64>,
+    expected: &Array1<f64>,
+    actual: &Array1<f64>,
     max_rel_body: f64,
     max_rel_end: f64,
     eps_body: f64,
@@ -72,8 +72,8 @@ pub fn assert_relative_eq_with_end_points(
     );
 
     assert_arrays_equal(
-        expected.slice(s![1..n - 2]).as_slice().unwrap(),
-        actual.slice(s![1..n - 2]).as_slice().unwrap(),
+        expected.slice(s![1..n - 2]),
+        actual.slice(s![1..n - 2]),
         eps_body,
         max_rel_body,
     );
@@ -85,17 +85,22 @@ fn abs_rel_errors(a: f64, b: f64) -> (f64, f64) {
     (abs_e, rel_e)
 }
 
-pub(crate) fn assert_arrays_equal(actual: &[f64], expected: &[f64], eps: f64, max_rel: f64) {
-    let actual = actual.to_vec();
-    let expected = expected.to_vec();
+pub(crate) fn assert_arrays_equal<'a>(
+    actual: impl IntoIterator<Item = &'a f64>,
+    expected: impl IntoIterator<Item = &'a f64>,
+    eps: f64,
+    max_rel: f64,
+) {
+    // let actual = actual.iter();
+    // let expected = expected.to_vec();
     // let reference = reference.clone().into_vec();
     // let exp_error = MACHINE_CONSTANTS.abs_error_tolerance;
 
-    for (i, (&act, exp)) in actual.iter().zip(expected).enumerate() {
+    for (i, (&act, exp)) in actual.into_iter().zip(expected.into_iter()).enumerate() {
         // let ref_val = reference.get(i);
         // let tolerances = Tolerances::new(act, exp, ref_val, exp_error);
         if !relative_eq!(act, exp, epsilon = eps, max_relative = max_rel) {
-            let (actual_error, relative_error) = abs_rel_errors(act, exp);
+            let (actual_error, relative_error) = abs_rel_errors(act, *exp);
             panic!(
                 "Failed on matching values at index {i}\n\
                 Actual: {act:e}\n\

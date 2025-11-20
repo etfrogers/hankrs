@@ -2,13 +2,16 @@ mod utils;
 
 use approx::assert_relative_eq;
 use hankrs::hankel::HankelTransform;
-use ndarray::{Array1, Axis};
+use ndarray::{Array1, Axis, Ix1};
+use ndarray_stats::DeviationExt;
 use num::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
 use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit};
 use utils::{assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat};
+
+use crate::utils::assert_arrays_equal;
 // const pi: f64 = math.PI;
 const MAX_ORDER: i32 = 4;
 
@@ -61,6 +64,7 @@ fn radius() -> Array1<f64> {
 }
 
 #[fixture]
+// #[rstest]
 #[once]
 fn transformer(radius: Array1<f64>) -> HankelTransform {
     let order = 0;
@@ -96,7 +100,7 @@ fn test_round_trip_r_interpolation(
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_r(&fun).unwrap();
     let reconstructed_func = transformer.to_original_r(&transform_func).unwrap();
-    assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, 0.0, 2e-5);
+    assert_relative_eq_with_end_points(&reconstructed_func, &fun, 1e-4, 1e-3, 0.0, 2e-5);
 }
 
 #[apply(smooth_shapes)]
@@ -112,7 +116,7 @@ fn test_round_trip_k_interpolation(shape: Shape, radius: Array1<f64>) {
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_k(&fun).unwrap();
     let reconstructed_func = transformer.to_original_k(&transform_func).unwrap();
-    assert_relative_eq_with_end_points(reconstructed_func, fun, 1e-4, 1e-3, 0.0, 2e-7);
+    assert_relative_eq_with_end_points(&reconstructed_func, &fun, 1e-4, 1e-3, 0.0, 2e-7);
 }
 
 #[apply(smooth_shapes)]
@@ -143,8 +147,8 @@ fn test_round_trip_with_interpolation(
         a_tol_body = 2e-4
     }
     assert_relative_eq_with_end_points(
-        fun,
-        reconstructed,
+        &fun,
+        &reconstructed,
         r_tol_body,
         r_tol_end,
         a_tol_body,
@@ -223,91 +227,99 @@ fn test_energy_conservation(
 
     assert_relative_eq!(energy_before, energy_after, epsilon = 0.006);
 }
-/*
+
 // -------------------
 // Test known HT pairs
 // -------------------
 
-func (t *HankelTestSuite) TestJinc() {
-    for _, let a = range []float64{1, 0.7, 0.1} {
-        t.Run(fmt.Sprint(a), func() {
-            let f = testutils.GeneralisedJinc(t.transformer.Radius(), a, t.order)
-            let expected_ht = testutils.GeneralisedTopHat(t.transformer.V(), a, t.order)
-            let actual_ht = t.transformer.QDHT(f)
-            let err = testutils.MeanAbsError(expected_ht, actual_ht)
-            assert.Less(t.T(), err, 1e-3)
-        })
-    }
+#[rstest]
+fn test_jinc(
+    #[values(1.0, 0.7, 0.1)] a: f64,
+    #[values(0, 1, 2, 3, 4)] order: i32,
+    radius: Array1<f64>,
+) {
+    let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let f = generalised_jinc(transformer.radius(), a, order);
+    let expected_ht = generalised_top_hat(transformer.frequency(), a, order);
+    let actual_ht = transformer.qdht(&f, Axis(0));
+    let err = expected_ht.mean_abs_err(&actual_ht).unwrap();
+    assert!(err < 1e-3);
 }
 
-func (t *HankelTestSuite) TestTopHat() {
-    for _, let a = range []float64{1, 1.5, 0.1} {
-        t.Run(fmt.Sprint(a), func() {
-            let f = testutils.GeneralisedTopHat(t.transformer.Radius(), a, t.order)
-            let expected_ht = testutils.GeneralisedJinc(t.transformer.V(), a, t.order)
-            let actual_ht = t.transformer.QDHT(f)
-            assert.Less(t.T(), testutils.MeanAbsError(expected_ht, actual_ht), 1e-3)
-        })
-    }
+#[rstest]
+fn test_top_hat(
+    #[values(1.0, 1.5, 0.1)] a: f64,
+    #[values(0, 1, 2, 3, 4)] order: i32,
+    radius: Array1<f64>,
+) {
+    let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let f = generalised_top_hat(transformer.radius(), a, order);
+    let expected_ht = generalised_jinc(transformer.frequency(), a, order);
+    let actual_ht = transformer.qdht(&f.into_dyn(), Axis(0));
+    let err = expected_ht
+        .mean_abs_err(&actual_ht.into_dimensionality::<Ix1>().unwrap())
+        .unwrap();
+    assert!(err < 1e-3);
 }
 
-func (t *RadialSuite) TestGaussian() {
+#[rstest]
+fn test_gaussian(transformer: &HankelTransform, #[values(2.0, 5.0, 10.0)] a: f64) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    let transformer = gohank.NewTransformFromRadius(0, &t.radius)
-    for _, let a = range []float64{2, 5, 10} {
-        t.Run(fmt.Sprint(a), func() {
-            let f = mat.NewVecDense(transformer.Radius().Len(), nil)
-            let a2 = math.Pow(a, 2)
-            utils.ApplyVec(func(r float64) float64 { return math.Exp(-a2 * math.Pow(r, 2)) }, f, transformer.Radius())
-            let expected_ht = mat.NewVecDense(transformer.Radius().Len(), nil)
-            utils.ApplyVec(func(kr float64) float64 { return 2 * pi * (1 / (2 * a2)) * math.Exp(-math.Pow(kr, 2)/(4*a2)) },
-                expected_ht, transformer.Kr())
-            let actual_ht = transformer.QDHT(f)
-            testutils.AssertInDeltaVec(t.T(), expected_ht, actual_ht, -1, 1e-9)
-        })
-    }
+    let a2 = a.powi(2);
+    let f = transformer.radius().mapv(|r| (-a2 * r.powi(2)).exp());
+    let expected_ht = transformer
+        .kr()
+        .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
+    let actual_ht = transformer.qdht(&f.into_dyn(), Axis(0));
+    assert_arrays_equal(&expected_ht, &actual_ht, 1e-9, 0.0);
 }
 
-func (t *RadialSuite) TestInverseGaussian() {
+#[rstest]
+fn test_inverse_gaussian(transformer: &HankelTransform, #[values(2.0, 5.0, 10.0)] a: f64) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    let transformer = gohank.NewTransformFromRadius(0, &t.radius)
-    for _, let a = range []float64{2, 5, 10} {
-        t.Run(fmt.Sprint(a), func() {
-            let ht = mat.NewVecDense(transformer.Radius().Len(), nil)
-            let a2 = math.Pow(a, 2)
-            utils.ApplyVec(func(kr float64) float64 { return 2 * pi * (1 / (2 * a2)) * math.Exp(-math.Pow(kr, 2)/(4*a2)) }, ht, transformer.Kr())
-            // ht = 2 * nppi * (1 / (2 * a * *2)) * np.exp(-transformer.kr**2/(4*a**2))
-            let actual_f = transformer.IQDHT(ht)
-            let expected_f = mat.NewVecDense(transformer.Radius().Len(), nil)
-            utils.ApplyVec(func(r float64) float64 { return math.Exp(-a2 * math.Pow(r, 2)) }, expected_f, transformer.Radius())
-            // expected_f = np.exp(-a * *2 * transformer.r * *2)
-            testutils.AssertInDeltaVec(t.T(), expected_f, actual_f, -1, 1e-9)
-        })
-    }
+
+    let a2 = a.powi(2);
+    let expected_f = transformer.radius().mapv(|r| (-a2 * r.powi(2)).exp());
+    let ht = transformer
+        .kr()
+        .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
+    let actual_f = transformer.iqdht(&ht.into_dyn(), Axis(0));
+    assert_arrays_equal(&actual_f, &expected_f, 1e-9, 0.0);
 }
 
+#[rstest]
 // @pytest.mark.parametrize('axis', [0, 1])
-// func (t *HankelTestSuit) test_gaussian_2d(axis int, radius, np.ndarray){
-//     // Note the definition in Guizar-Sicairos varies by 2*pi in
-//     // both scaling of the argument (so use kr rather than v) and
-//     // scaling of the magnitude.
-//     transformer = HankelTransform(order=0, radial_grid=radius)
-//     a = np.linspace(2, 10)
-//     dims_a = np.ones(2, np.int)
-//     dims_a[1-axis] = len(a)
-//     dims_r = np.ones(2, np.int)
-//     dims_r[axis] = len(transformer.r)
-//     a_reshaped = np.reshape(a, dims_a)
-//     r_reshaped = np.reshape(transformer.r, dims_r)
-//     kr_reshaped = np.reshape(transformer.kr, dims_r)
-//     f = np.exp(-a_reshaped**2 * r_reshaped**2)
-//     expected_ht = 2*np.pi*(1 / (2 * a_reshaped**2)) * np.exp(-kr_reshaped**2 / (4 * a_reshaped**2))
-//     actual_ht = transformer.qdht(f, axis=axis)
-//     assert np.allclose(expected_ht, actual_ht)
+fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) {
+    // Note the definition in Guizar-Sicairos varies by 2*pi in
+    // both scaling of the argument (so use kr rather than v) and
+    // scaling of the magnitude.
+    // transformer = HankelTransform(order=0, radial_grid=radius);
+    let a = Array1::linspace(2.0, 10.0, 50);
+    let mut dims_a = Array1::ones(2);
+    dims_a[1 - axis] = a.len();
+    let mut dims_r = Array1::ones(2);
+    dims_r[axis] = transformer.radius().len();
+    let a_reshaped = a.to_shape(dims_a.as_slice().unwrap()).unwrap();
+    let r_reshaped = transformer
+        .radius()
+        .to_shape(dims_r.as_slice().unwrap())
+        .unwrap();
+    let kr_reshaped = transformer
+        .kr()
+        .to_shape(dims_r.as_slice().unwrap())
+        .unwrap();
+    let f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
+    let expected_ht = 2.0
+        * PI
+        * (1.0 / (2.0 * a_reshaped.powi(2)))
+        * (-kr_reshaped.powi(2) / (4.0 * a_reshaped.powi(2))).exp();
+    let actual_ht = transformer.qdht(&f, Axis(axis));
+    assert_arrays_equal(&expected_ht, &actual_ht, 1e-8, 1e-5);
+}
 
 // @pytest.mark.parametrize('axis', [0, 1])
 // func (t *HankelTestSuit) test_inverse_gaussian_2d(axis int, radius, np.ndarray){
@@ -327,8 +339,9 @@ func (t *RadialSuite) TestInverseGaussian() {
 //     actual_f = transformer.iqdht(ht, axis=axis)
 //     expected_f = np.exp(-a_reshaped ** 2 * r_reshaped ** 2)
 //     assert np.allclose(expected_f, actual_f)
-
-func (t *RadialSuite) Test1OverR2plusZ2() {
+/*
+#[rstest]
+fn Test1OverR2plusZ2() {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
@@ -343,7 +356,7 @@ func (t *RadialSuite) Test1OverR2plusZ2() {
             let expected_ht = mat.NewVecDense(t.radius.Len(), nil)
             utils.ApplyVec(func(k float64) float64 { return 2 * pi * math.Y0(a*k) }, expected_ht, &t.radius)
             //2 * np.pi * scipy_bessel.kn(0, a*transformer.kr)
-            let actual_ht = transformer.QDHT(f)
+            let actual_ht = transformer.qdht(f)
             // These tolerances are pretty loose, but there seems to be large
             // error here
             testutils.AssertInDeltaVec(t.T(), expected_ht, actual_ht, -1, 0.01)
@@ -354,11 +367,13 @@ func (t *RadialSuite) Test1OverR2plusZ2() {
 
 }
 
-func sinc(x float64) float64 {
+#[rstest]
+fn  sinc(x float64) float64 {
     return math.Sin(x) / x
 }
 
-func TestSinc(t *testing.T) {
+#[rstest]
+fn  TestSinc(t *testing.T) {
     /*Tests from figure 1 of
       *"Computation of quasi-discrete Hankel transforms of the integer
       order for propagating optical wave fields"*
@@ -385,7 +400,7 @@ func TestSinc(t *testing.T) {
                         (2 * pi * gamma * math.Sqrt(math.Pow(v_, 2)-math.Pow(gamma, 2))))
                 }
             }, expected_ht, v)
-            let ht = transformer.QDHT(fun)
+            let ht = transformer.qdht(fun)
             let maxHT = slices.Max(ht.(*mat.VecDense).RawVector().Data)
             for let i = 0; i < expected_ht.Len(); i++ {
                 // use the same error measure as the paper
@@ -408,7 +423,8 @@ func TestSinc(t *testing.T) {
 // ------------------------
 
 // Internal test of generalised jinc func
-func TestGeneralisedJincZero(t *testing.T) {
+#[rstest]
+fn  TestGeneralisedJincZero(t *testing.T) {
     for _, let a = range []float64{1, 0.7, 0.1, 136., 1e-6} {
         for let p = -10; p < 10; p++ {
             t.Run(fmt.Sprintf("%f, %d", a, p), func(t *testing.T) {
@@ -500,7 +516,8 @@ def test_initialisation_errors():
 
 @pytest.mark.parametrize('n', [10, 100, 512, 1024])
 @pytest.mark.parametrize('max_radius', [0.1, 10, 20, 1e6])
-func (t *HankelTestSuit) test_r_creation_equivalence(n int, max_radius, float){
+#[rstest]
+fn  (t *HankelTestSuit) test_r_creation_equivalence(n int, max_radius, float){
     transformer1 = HankelTransform(order=0, n_points=1024, max_radius=50)
     r = np.linspace(0, 50, 1024)
     transformer2 = HankelTransform(order=0, radial_grid=r)

@@ -1,5 +1,4 @@
-use einsum::einsum;
-use ndarray::{Array, Array1, Array2, ArrayD, Axis, Dimension, IxDyn, NewAxis, Shape, s};
+use ndarray::{Array, Array1, Array2, Axis, Dimension, NewAxis, RemoveAxis, s};
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
 use std::{f64::consts::PI, fmt::Debug};
@@ -448,60 +447,10 @@ impl HankelTransform {
     // :return: Function in frequency space (sampled at ``self.v``)
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn qdht<D: Dimension>(&self, fr: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
-        // let fr = fr.into_dyn();
-        let ndim = fr.ndim();
-        match ndim {
-            1 => {
-                //|| (axis.index() == ndim - 2) {
-                let (jr, jv) = self.get_scaling_factors(fr.dim());
-                // fr / jr   → broadcasting division
-                let tmp = fr / &jr;
-
-                // self.t.dot(tmp)
-                //
-                // self.t must be 2D: (K × N)
-                // tmp must be 1D or 2D such that dot() is valid.
-                let fv = jv
-                    * self
-                        .t
-                        .dot(&tmp.into_dimensionality::<ndarray::Ix1>().unwrap());
-
-                fv
-            }
-            2 => {
-                let do_swap = axis.index() == ndim - 2;
-                let mut fr_placeholder;
-                let mut _fr = if do_swap {
-                    // _fr = swapaxes(fr, axis, -2)
-                    fr_placeholder = fr.clone();
-                    fr_placeholder.swap_axes(axis.index(), ndim - 2);
-                    &fr_placeholder
-                } else {
-                    &fr
-                };
-
-                let (jr, jv) = self.get_scaling_factors(&_fr);
-
-                // _fr / jr   → broadcast division
-                let tmp = _fr / &jr;
-
-                let mut fv = jv
-                    * self
-                        .t
-                        .dot(&tmp.into_dimensionality::<ndarray::Ix2>().unwrap());
-
-                if do_swap {
-                    // swap axes back to original order
-                    fv.swap_axes(axis.index(), ndim - 2);
-                }
-
-                fv
-            }
-            _ => todo!(),
-        }
-        .into_dimensionality::<D>()
-        .unwrap()
+    pub fn qdht<D: Dimension + RemoveAxis>(&self, fr: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
+        let scale_factor_input = &self.jr;
+        let scale_factor_output = &self.jv;
+        self.transform_by_lines(fr, axis, scale_factor_input, scale_factor_output)
     }
 
     // IQDHT: Inverse Quasi Discrete Hankel Transform
@@ -519,84 +468,31 @@ impl HankelTransform {
 
     // :return: Radial function (sampled at self.r) = IHT(fv)
     // :rtype: :class:`numpy.ndarray`
-    pub fn iqdht(&self, fv: &ArrayD<f64>, axis: Axis) -> ArrayD<f64> {
-        let ndim = fv.ndim();
-
-        match ndim {
-            1 => {
-                let (jr, jv) = self.get_scaling_factors(fv);
-                jr * self
-                    .t
-                    .dot(&(fv / jv).into_dimensionality::<ndarray::Ix1>().unwrap())
-            }
-            2 => {
-                let do_swap = axis.index() == ndim - 2;
-                let mut fv_placeholder;
-                let mut _fv = if do_swap {
-                    // _fv = swapaxes(fr, axis, -2)
-                    fv_placeholder = fv.clone();
-                    fv_placeholder.swap_axes(axis.index(), ndim - 2);
-                    &fv_placeholder
-                } else {
-                    &fv
-                };
-
-                let (jr, jv) = self.get_scaling_factors(&_fv);
-                let tmp = _fv / &jv;
-
-                let mut fr = jr
-                    * self
-                        .t
-                        .dot(&tmp.into_dimensionality::<ndarray::Ix2>().unwrap());
-
-                if do_swap {
-                    // swap axes back to original order
-                    fr.swap_axes(axis.index(), ndim - 2);
-                }
-
-                fr
-            }
-            _ => todo!(),
-        }
-        // if (fv.ndim() == 1) || (axis == Axis(fv.ndim() - 2)) {
-        //     let (jr, jv) = self.get_scaling_factors(fv);
-        //     jr * self.t.dot(&(fv / jv))
-        // } else {
-        //     todo!()
-        //     // _fv = np.core.swapaxes(fv, axis, -2);
-        // (jr, jv) = self._get_scaling_factors(_fv);
-        // fr = jr * np.matmul(self.T, (_fv / jv));
-        // np.core.swapaxes(fr, axis, -2)
-        // }
+    pub fn iqdht<D: Dimension>(&self, fv: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
+        self.transform_by_lines(fv, axis, &self.jv, &self.jr)
     }
 
-    fn get_scaling_factors<D: Dimension>(&self, dimension: D) -> (Array<f64, D>, Array<f64, D>) {
-        let ndim = shape.len();
-        let jr = self.jr.clone();
-        let jv = self.jv.clone();
-        if ndim == 1 {
-            (jr, jv)
-        } else {
-            // n2 = list(f.shape)
-            let mut n2 = f.shape().to_vec();
+    fn transform_by_lines<D: Dimension>(
+        &self,
+        f: &Array<f64, D>,
+        axis: Axis,
+        scale_factor_input: &Array1<f64>,
+        scale_factor_output: &Array1<f64>,
+    ) -> Array<f64, D> {
+        let mut transform = Array::zeros(f.dim());
 
-            // n2[-2] = 1
-            n2[ndim - 2] = 1;
-
-            // ones_shape = ones_like(n2); ones_shape[-2] = len(JR)
-            let mut ones_shape = vec![1usize; ndim];
-            ones_shape[ndim - 2] = self.jr.len();
-
-            // reshape jr/jv to broadcastable shape
-            let jr_b = jr.to_shape(IxDyn(&ones_shape)).unwrap();
-            let jv_b = jv.to_shape(IxDyn(&ones_shape)).unwrap();
-
-            // broadcast to full n2 shape
-            let out_jr = jr_b.broadcast(IxDyn(&n2)).unwrap().to_owned();
-            let out_jv = jv_b.broadcast(IxDyn(&n2)).unwrap().to_owned();
-
-            (out_jr, out_jv)
+        for (mut transform_line, fr_line) in
+            transform.lanes_mut(axis).into_iter().zip(f.lanes(axis))
+        {
+            let scaled_line = fr_line.to_owned() / scale_factor_input;
+            let mut transformed = self.t.dot(&scaled_line);
+            transformed *= scale_factor_output;
+            transform_line.assign(&transformed);
         }
+        // unsafe {
+        //     transform.assume_init();
+        // }
+        transform
     }
 
     pub fn transform_matrix(&self) -> &Array2<f64> {
