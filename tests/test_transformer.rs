@@ -1,9 +1,10 @@
 mod utils;
 
+use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
 use hankrs::hankel::HankelTransform;
 use ndarray::{Array1, Axis, Ix1};
-use ndarray_stats::DeviationExt;
+use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
@@ -321,7 +322,6 @@ fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) 
     assert_arrays_equal(&expected_ht, &actual_ht, 1e-8, 1e-5);
 }
 
-// @pytest.mark.parametrize('axis', [0, 1])
 #[rstest]
 fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
@@ -350,89 +350,131 @@ fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTra
     let expected_f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
     assert_arrays_equal(&expected_f, &actual_f, 1e-8, 1e-5);
 }
-/*
+
 #[rstest]
-fn Test1OverR2plusZ2() {
+fn test1_over_r2_plus_z2(#[values(2.0, 1.0, 0.1)] a: f64) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    t.T().Skip("skipping as it requires a modifed bessel function of the second kind")
-    let transformer = gohank.NewTransform(0, 50, 1024)
-    for _, let a = range []float64{2, 5, 10} {
-        t.Run(fmt.Sprint(a), func() {
-            let f = mat.NewVecDense(t.radius.Len(), nil)
-            utils.ApplyVec(func(r float64) float64 { return 1 / (math.Pow(r, 2) + math.Pow(a, 2)) }, f, &t.radius)
-            // f = 1 / (transformer.r**2 + a**2)
-            // kn cannot handle complex arguments, so a must be real
-            let expected_ht = mat.NewVecDense(t.radius.Len(), nil)
-            utils.ApplyVec(func(k float64) float64 { return 2 * pi * math.Y0(a*k) }, expected_ht, &t.radius)
-            //2 * np.pi * scipy_bessel.kn(0, a*transformer.kr)
-            let actual_ht = transformer.qdht(f)
-            // These tolerances are pretty loose, but there seems to be large
-            // error here
-            testutils.AssertInDeltaVec(t.T(), expected_ht, actual_ht, -1, 0.01)
-            let err = testutils.MeanAbsError(expected_ht, actual_ht)
-            assert.Less(t.T(), err, 4e-3)
-        })
-    }
+    let transformer = HankelTransform::new(0, 50.0, 1024);
+    let f = transformer.radius().mapv(|r| 1.0 / (r.powi(2) + a.powi(2)));
+    let expected_ht = transformer
+        .kr()
+        .mapv(|k| 2.0 * PI * bessel_k(0, a * k).unwrap());
+    let actual_ht = transformer.qdht(&f, Axis(0));
 
+    // These tolerances are pretty loose, but there seems to be large
+    // error here
+    assert_arrays_equal(&actual_ht, &expected_ht, 0.01, 0.1);
+    let err = expected_ht.mean_abs_err(&actual_ht).unwrap();
+    assert!(err < 4e-3);
+}
+
+fn sinc(x: f64) -> f64 {
+    x.sin() / x
 }
 
 #[rstest]
-fn  sinc(x float64) float64 {
-    return math.Sin(x) / x
-}
-
-#[rstest]
-fn  TestSinc(t *testing.T) {
+fn test_sinc(#[values(1, 4)] p: i32) {
     /*Tests from figure 1 of
       *"Computation of quasi-discrete Hankel transforms of the integer
       order for propagating optical wave fields"*
       Manuel Guizar-Sicairos and Julio C. Guitierrez-Vega
       J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
     */
-    for _, let p = range []int{1, 4} {
-        t.Run(fmt.Sprint(p), func(t *testing.T) {
-            let transformer = gohank.NewTransform(p, 3, 256)
-            let v = transformer.V()
-            let gamma = 5.
-            let fun = mat.NewVecDense(v.Len(), nil)
-            utils.ApplyVec(func(r float64) float64 { return sinc(2.0 * pi * gamma * r) }, fun, transformer.Radius())
-            let expected_ht = mat.NewVecDense(fun.Len(), nil)
+    let transformer = HankelTransform::new(p, 3.0, 256);
 
-            utils.ApplyVec(func(v_ float64) float64 {
-                let pf = float64(p)
-                if v_ < gamma {
-                    return (math.Pow(v_, pf) * math.Cos(pf*pi/2) /
-                        (2 * pi * gamma * math.Sqrt(math.Pow(gamma, 2)-math.Pow(v_, 2)) *
-                            math.Pow(gamma+math.Sqrt(math.Pow(gamma, 2)-math.Pow(v_, 2)), pf)))
-                } else {
-                    return (math.Sin(pf*math.Asin(gamma/v_)) /
-                        (2 * pi * gamma * math.Sqrt(math.Pow(v_, 2)-math.Pow(gamma, 2))))
-                }
-            }, expected_ht, v)
-            let ht = transformer.qdht(fun)
-            let maxHT = slices.Max(ht.(*mat.VecDense).RawVector().Data)
-            for let i = 0; i < expected_ht.Len(); i++ {
-                // use the same error measure as the paper
-                let dynamical_error = 20 * math.Log10(math.Abs(expected_ht.AtVec(i)-ht.AtVec(i))/maxHT)
+    let frequency = transformer.frequency();
+    let gamma = 5.0;
+    let fun = transformer.radius().mapv(|r| sinc(2.0 * PI * gamma * r));
 
-                let threshold = -10.
-                if v.AtVec(i) > gamma*1.25 || v.AtVec(i) < gamma*0.75 {
-                    // threshold is lower for areas not close to gamma
-                    threshold = -35
-                }
-                assert.Less(t, dynamical_error, threshold)
+    let pf = p as f64;
+    let expected_ht = frequency.mapv(|v| {
+        let norm_gamma_v = (gamma.powi(2) - v.powi(2)).sqrt();
+        let norm_v_gamma = (v.powi(2) - gamma.powi(2)).sqrt();
 
-            }
-        })
-    }
+        if v < gamma {
+            (v.powf(pf) * (pf * PI / 2.0).cos())
+                / (2.0 * PI * gamma * norm_gamma_v * (gamma + norm_gamma_v).powf(pf))
+        } else {
+            (pf * (gamma / v).asin()).sin() / (2.0 * PI * gamma * norm_v_gamma)
+        }
+    });
+    let ht = transformer.qdht(&fun, Axis(0));
+    let max_ht = ht.max().unwrap();
+    // use the same error measure as the paper
+    let dynamical_error = 20.0 * ((&expected_ht - &ht).abs() / *max_ht).log10();
+    dynamical_error.iter().zip(frequency).for_each(|(de, v)| {
+        // threshold is lower for areas not close to gamma
+        let threshold = if *v > gamma * 1.25 || *v < gamma * 0.75 {
+            -10.0
+        } else {
+            -35.0
+        };
+        assert!(*de < threshold);
+    });
+}
+
+fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
+    let out_file_name = format!("graph{p}.png");
+    use plotters::prelude::*;
+    let root = BitMapBackend::new(&out_file_name, (1024, 768)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(35)
+        .y_label_area_size(40)
+        .right_y_label_area_size(40)
+        .margin(5)
+        .caption("Dual Y-Axis Example", ("sans-serif", 50.0).into_font())
+        .build_cartesian_2d(
+            0.0..(*x.max().unwrap()),
+            (*y1.min().unwrap())..(*y1.max().unwrap() / 1.0),
+        )
+        .unwrap();
+
+    chart
+        .configure_mesh()
+        .disable_x_mesh()
+        .disable_y_mesh()
+        .y_label_formatter(&|x| format!("{:e}", x))
+        .draw()
+        .unwrap();
+
+    chart
+        .draw_series(LineSeries::new(
+            x.clone().into_iter().zip(y1.clone().into_iter()),
+            &BLUE,
+        ))
+        .unwrap()
+        .label("y1")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+
+    chart
+        .draw_series(LineSeries::new(
+            x.clone().into_iter().zip(y2.clone().into_iter()),
+            &RED,
+        ))
+        .unwrap()
+        .label("y2")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+
+    chart
+        .configure_series_labels()
+        .background_style(RGBColor(128, 128, 128))
+        .draw()
+        .unwrap();
+
+    // To avoid the IO failure being ignored silently, we manually call the present function
+    root.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");
+    println!("Result has been saved to {}", out_file_name);
 }
 
 // ------------------------
 // End Known Transfom pairs
 // ------------------------
 
+/*
 // Internal test of generalised jinc func
 #[rstest]
 fn  TestGeneralisedJincZero(t *testing.T) {
@@ -478,10 +520,6 @@ def test_round_trip_3d(two_d_size: int, axis: int, radius: np.ndarray, transform
     ht = transformer.qdht(func, axis=axis)
     reconstructed = transformer.iqdht(ht, axis=axis)
     assert np.allclose(func, reconstructed)
-
-
-
-
 
 def test_initialisation_errors():
     r_1d = np.linspace(0, 1, 10)
