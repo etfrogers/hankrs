@@ -404,12 +404,13 @@ fn test_sinc(#[values(1, 4)] p: i32) {
     let max_ht = ht.max().unwrap();
     // use the same error measure as the paper
     let dynamical_error = 20.0 * ((&expected_ht - &ht).abs() / *max_ht).log10();
+
     dynamical_error.iter().zip(frequency).for_each(|(de, v)| {
         // threshold is lower for areas not close to gamma
         let threshold = if *v > gamma * 1.25 || *v < gamma * 0.75 {
-            -10.0
-        } else {
             -35.0
+        } else {
+            -10.0
         };
         assert!(*de < threshold);
     });
@@ -437,7 +438,7 @@ fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
         .configure_mesh()
         .disable_x_mesh()
         .disable_y_mesh()
-        .y_label_formatter(&|x| format!("{:e}", x))
+        // .y_label_formatter(&|x| format!("{:e}", x))
         .draw()
         .unwrap();
 
