@@ -1,8 +1,10 @@
 use std::f64::{INFINITY, consts::PI};
 
 use amos_bessel_rs::bessel_j;
+use approx::assert_abs_diff_eq;
 use approx::{AbsDiffEq, RelativeEq, assert_relative_eq, relative_eq};
 use ndarray::{Array1, s};
+use rstest::rstest;
 
 // ----------------
 // HELPER FUNCTIONS
@@ -159,4 +161,18 @@ fn generalised_jinc_f(v: f64, a: f64, p: i32) -> f64 {
         let j = bessel_j(p + 1, x).unwrap();
         prefactor * j / v
     }
+}
+
+// Internal test of generalised jinc func
+#[rstest]
+fn test_generalised_jinc_zero(
+    #[values(1.0, 0.7, 0.1, 136., 1e-6)] a: f64,
+    //"Skipping test for p=-1 as 1/eps does not go to inf correctly"
+    #[values(/*-10,-9,-8,-7,-6,-5,-4,-3,-2,*/ 0,1,2,3,4,5,6,7,8,9,10)] p: i32,
+) {
+    let eps = if p == -2 { 1e-5 / a } else { 1e-200 };
+    let val = generalised_jinc(&ndarray::arr1(&[0.0, eps]), a, p);
+
+    let tolerance = 2e-9;
+    assert_abs_diff_eq!(val[0], val[1], epsilon = tolerance)
 }

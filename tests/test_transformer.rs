@@ -476,30 +476,6 @@ fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
 // ------------------------
 
 /*
-// Internal test of generalised jinc func
-#[rstest]
-fn  TestGeneralisedJincZero(t *testing.T) {
-    for _, let a = range []float64{1, 0.7, 0.1, 136., 1e-6} {
-        for let p = -10; p < 10; p++ {
-            t.Run(fmt.Sprintf("%f, %d", a, p), func(t *testing.T) {
-                if p == -1 {
-                    t.Skip("Skipping test for p=-1 as 1/eps does not go to inf correctly")
-                }
-                let eps = 1e-200
-                if p == -2 {
-                    eps = 1e-5 / a
-                }
-                let v = mat.NewVecDense(2, []float64{0, eps})
-                let val = testutils.GeneralisedJinc(v, a, p)
-
-                let tolerance = 2e-9
-                assert.InDelta(t, val.AtVec(0), val.AtVec(1), tolerance)
-            })
-        }
-    }
-}
-*/
-/*
 
 @pytest.mark.parametrize('two_d_size', [1, 100, 27])
 @pytest.mark.parametrize('axis', [0, 1])
