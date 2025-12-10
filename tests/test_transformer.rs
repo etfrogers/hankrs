@@ -3,7 +3,7 @@ mod utils;
 use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
 use hankrs::hankel::HankelTransform;
-use ndarray::{Array1, Array2, Axis, Ix1};
+use ndarray::{Array, Array1, Array2, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
 use rand::random;
@@ -24,9 +24,12 @@ static TRANSFORMERS: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
     ]
 });
 
-fn random_vec_like(v: &Array1<f64>) -> Array1<f64> {
-    let shape = v.dim();
-    Array1::uninit(shape).map(|_: &MaybeUninit<f64>| random::<f64>() * 10.0)
+fn random_array_like<D: Dimension>(v: &Array<f64, D>) -> Array<f64, D> {
+    random_array(v.raw_dim())
+}
+
+fn random_array<D: Dimension>(shape: D) -> Array<f64, D> {
+    Array::uninit(shape).map(|_: &MaybeUninit<f64>| random::<f64>() * 10.0)
 }
 
 #[derive(Clone)]
@@ -50,7 +53,6 @@ impl<'a> Shape<'a> {
     }
 }
 
-// static SMOOTH_SHAPES: LazyLock<Vec<Shape>> = LazyLock::new(|| {
 #[template]
 #[rstest]
 #[case(Shape::new("zeros", &|_| 0.0,))]
@@ -75,7 +77,7 @@ fn transformer_zero_order(radius: Array1<f64>) -> HankelTransform {
 
 #[rstest]
 fn test_round_trip(transformer_zero_order: &HankelTransform) {
-    let fun = random_vec_like(transformer_zero_order.original_radial_grid().unwrap());
+    let fun = random_array_like(transformer_zero_order.radius());
     let ht = transformer_zero_order.qdht(&fun, Axis(0));
     let reconstructed = transformer_zero_order.iqdht(&ht, Axis(0));
     assert_relative_eq!(
@@ -213,7 +215,6 @@ fn intensity(v: f64) -> f64 {
 #[rstest]
 #[case("Jinc", &generalised_jinc)]
 #[case("Top Hat", &generalised_top_hat)]
-
 fn test_energy_conservation(
     #[case] _shape_name: &str,
     #[case] func: &dyn Fn(&Array1<f64>, f64, i32) -> Array1<f64>,
@@ -485,29 +486,37 @@ fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
 // End Known Transfom pairs
 // ------------------------
 
+#[rstest]
+fn test_round_trip_2d(
+    #[values(0, 1)] axis: usize,
+    #[values(1, 100, 27)] two_d_size: usize,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+
+    let mut dims = [two_d_size, two_d_size];
+    dims[axis] = transformer.radius().len();
+    let func = random_array(Dim(dims));
+    let ht = transformer.qdht(&func, Axis(axis));
+    let reconstructed = transformer.iqdht(&ht, Axis(axis));
+    assert_arrays_equal(&func, &reconstructed, 1e-8, 1e-8);
+}
+
+#[rstest]
+fn test_round_trip_3d(
+    #[values(0, 1)] axis: usize,
+    #[values(1, 100, 27)] two_d_size: usize,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+    let mut dims = [two_d_size, two_d_size, two_d_size];
+    dims[axis] = transformer.radius().len();
+    let func = random_array(Dim(dims));
+    let ht = transformer.qdht(&func, Axis(axis));
+    let reconstructed = transformer.iqdht(&ht, Axis(axis));
+    assert_arrays_equal(&func, &reconstructed, 1e-8, 1e-8);
+}
 /*
-
-@pytest.mark.parametrize('two_d_size', [1, 100, 27])
-@pytest.mark.parametrize('axis', [0, 1])
-def test_round_trip_2d(two_d_size: int, axis: int, radius: np.ndarray, transformer: HankelTransform):
-    dims = np.ones(2, np.int) * two_d_size
-    dims[axis] = radius.size
-    func = np.random.random(dims)
-    ht = transformer.qdht(func, axis=axis)
-    reconstructed = transformer.iqdht(ht, axis=axis)
-    assert np.allclose(func, reconstructed)
-
-
-@pytest.mark.parametrize('two_d_size', [1, 100, 27])
-@pytest.mark.parametrize('axis', [0, 1, 2])
-def test_round_trip_3d(two_d_size: int, axis: int, radius: np.ndarray, transformer: HankelTransform):
-    dims = np.ones(3, np.int) * two_d_size
-    dims[axis] = radius.size
-    func = np.random.random(dims)
-    ht = transformer.qdht(func, axis=axis)
-    reconstructed = transformer.iqdht(ht, axis=axis)
-    assert np.allclose(func, reconstructed)
-
 def test_initialisation_errors():
     r_1d = np.linspace(0, 1, 10)
     k_1d = r_1d.copy()
@@ -549,70 +558,87 @@ def test_initialisation_errors():
     _ = HankelTransform(order=0, radial_grid=r_1d)
     _ = HankelTransform(order=0, k_grid=k_1d)
 
-
-@pytest.mark.parametrize('n', [10, 100, 512, 1024])
-@pytest.mark.parametrize('max_radius', [0.1, 10, 20, 1e6])
-#[rstest]
-fn  (t *HankelTestSuit) test_r_creation_equivalence(n int, max_radius, float){
-    transformer1 = HankelTransform(order=0, n_points=1024, max_radius=50)
-    r = np.linspace(0, 50, 1024)
-    transformer2 = HankelTransform(order=0, radial_grid=r)
-
-    for key, val in transformer1.__dict__.items():
-        if key == '_original_radial_grid':
-            continue
-        val2 = getattr(transformer2, key)
-        if val is None:
-            assert val2 is None
-        else:
-            assert np.allclose(val, val2)
-
-
-
-
-@pytest.mark.parametrize('shape', smooth_shapes)
-@pytest.mark.parametrize('order', orders)
-@pytest.mark.parametrize('axis', [0, 1])
-def test_round_trip_r_interpolation_2d(radius: np.ndarray, order: int, shape: Callable, axis: int):
-    transformer = HankelTransform(order=order, radial_grid=radius)
-
-    // the function must be smoothish for interpolation
-    // to work. Random every point doesn't work
-    dims_amplitude = np.ones(2, np.int)
-    dims_amplitude[1-axis] = 10
-    amplitude = np.random.random(dims_amplitude)
-    dims_radius = np.ones(2, np.int)
-    dims_radius[axis] = len(radius)
-    func = np.reshape(shape(radius), dims_radius) * np.reshape(amplitude, dims_amplitude)
-    transform_func = transformer.to_transform_r(func, axis=axis)
-    reconstructed_func = transformer.to_original_r(transform_func, axis=axis)
-    assert np.allclose(func, reconstructed_func, rtol=1e-4)
-
-
-@pytest.mark.parametrize('shape', smooth_shapes)
-@pytest.mark.parametrize('order', orders)
-@pytest.mark.parametrize('axis', [0, 1])
-def test_round_trip_k_interpolation_2d(radius: np.ndarray, order: int, shape: Callable, axis: int):
-    k_grid = radius/10
-    transformer = HankelTransform(order=order, k_grid=k_grid)
-
-    // the function must be smoothish for interpolation
-    // to work. Random every point doesn't work
-    dims_amplitude = np.ones(2, np.int)
-    dims_amplitude[1-axis] = 10
-    amplitude = np.random.random(dims_amplitude)
-    dims_k = np.ones(2, np.int)
-    dims_k[axis] = len(radius)
-    func = np.reshape(shape(k_grid), dims_k) * np.reshape(amplitude, dims_amplitude)
-    transform_func = transformer.to_transform_k(func, axis=axis)
-    reconstructed_func = transformer.to_original_k(transform_func, axis=axis)
-    assert np.allclose(func, reconstructed_func, rtol=1e-4)
-
-
-
-
 */
 
+#[rstest]
+fn test_r_creation_equivalence(
+    #[values(10, 100, 512, 1024)] n_points: usize,
+    #[values(0.1, 10.0, 20.0, 1e6)] max_radius: f64,
+) {
+    let transformer1 = HankelTransform::new(0, max_radius, n_points);
+    let r = Array1::linspace(0.0, max_radius, n_points);
+    let transformer2 = HankelTransform::new_from_r_grid(0, r);
+
+    assert_relative_eq!(
+        transformer1,
+        transformer2,
+        max_relative = 1e-8,
+        epsilon = 1e-8
+    );
+}
+/*
+// @pytest.mark.parametrize('shape', smooth_shapes)
+// @pytest.mark.parametrize('order', orders)
+// @pytest.mark.parametrize('axis', [0, 1])
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_r_interpolation_2d(
+    shape: Shape,
+    radius: Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+    #[values(0, 1)] axis: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+    // fn test_round_trip_r_interpolation_2d(radius: np.ndarray, order: int, shape: Callable, axis: int):
+    // transformer = HankelTransform(order=order, radial_grid=radius)
+
+    // the function must be smoothish for interpolation
+    // to work. Random every point doesn't work
+    dims_amplitude = np.ones(2, np.int);
+    dims_amplitude[1 - axis] = 10;
+    amplitude = np.random.random(dims_amplitude);
+    dims_radius = np.ones(2, np.int);
+    dims_radius[axis] = len(radius);
+    func = np.reshape(shape(radius), dims_radius) * np.reshape(amplitude, dims_amplitude);
+    transform_func = transformer.to_transform_r(func, axis = axis);
+    reconstructed_func = transformer.to_original_r(transform_func, axis = axis);
+    assert_arrays_equal(func, reconstructed_func, 1e-8, 1e-4);
+}
+
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_k_interpolation_2d(
+    shape: Shape,
+    radius: Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order: i32,
+    #[values(0, 1)] axis: usize,
+) {
+    let k_grid = &radius / 10.0;
+    let transformer = HankelTransform::new_from_k_grid(order, k_grid.clone());
+    // def test_round_trip_k_interpolation_2d(radius: np.ndarray, order: int
+    // @pytest.mark.parametrize('shape', smooth_shapes)
+    // @pytest.mark.parametrize('order', orders)
+    // @pytest.mark.parametrize('axis', [0, 1])
+    // def test_round_trip_k_interpolation_2d(radius: np.ndarray, order: int, shape: Callable, axis: int):
+    //     k_grid = radius/10
+    //     transformer = HankelTransform(order=order, k_grid=k_grid)
+
+    // the function must be smoothish for interpolation
+    // to work. Random every point doesn't work
+    let mut dims_amplitude = [1, 1]; //np.ones(2, np.int);
+    dims_amplitude[1 - axis] = 10;
+    let amplitude = random_array(Dim(dims_amplitude));
+    let mut dims_k = [1, 1];
+    dims_k[axis] = k_grid.len();
+    let func = &k_grid.mapv(shape.f) * &amplitude.index_axis(Axis(1 - axis), 0);
+    // dims_k = np.ones(2, np.int);
+    // dims_k[axis] = len(radius);
+    // func = np.reshape(shape(k_grid), dims_k) * np.reshape(amplitude, dims_amplitude);
+    let transform_func = transformer.to_transform_k(func, axis = axis);
+    reconstructed_func = transformer.to_original_k(transform_func, axis = axis);
+    assert_arrays_equal(&func, &reconstructed_func, 1e-8, 1e-4);
+}
+*/
 fn outer(x: &Array1<f64>, y: &Array1<f64>) -> Array2<f64> {
     let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
     let x_reshaped = x.to_shape((size_x, 1)).unwrap();

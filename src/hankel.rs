@@ -1,3 +1,4 @@
+use approx::{AbsDiffEq, RelativeEq};
 use ndarray::{Array, Array1, Array2, Axis, Dimension, NewAxis, RemoveAxis, s};
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
@@ -63,19 +64,16 @@ use amos_bessel_rs::{BesselFunType, bessel_j, bessel_zeros};
 
 // The algorithm also calls the function :func:`scipy.special.jn_zeros` to calculate
 // the roots of the bessel function.
+#[derive(PartialEq)]
 pub struct HankelTransform {
     order: i32,
     n_points: usize,
     max_radius: f64,
     original_radial_grid: Option<Array1<f64>>,
     original_k_grid: Option<Array1<f64>>,
-    _alpha: Array1<f64>,
-    _alpha_n1: f64,
     r: Array1<f64>,
     kr: Array1<f64>,
     v: Array1<f64>,
-    _v_max: f64,
-    _s: f64,
     t: Array2<f64>,
     jv: Array1<f64>,
     jr: Array1<f64>,
@@ -91,90 +89,49 @@ impl Debug for HankelTransform {
     }
 }
 
-/*
-impl HankelTransform{
-    fn new_from_r_grid(order: i32,
-                 radial_grid: Array1<f64>) -> Self{
-        // """Constructor"""
+impl AbsDiffEq for HankelTransform {
+    type Epsilon = f64;
 
-        // usage = "Either radial_grid or k_grid or both max_radius and n_points must be supplied"
-        // if radial_grid is None and k_grid is None:
-        //     if max_radius is None or n_points is None:
-        //         raise ValueError(usage)
-        // elif k_grid is not None:
-        //     if max_radius is not None or n_points is not None or radial_grid is not None:
-        //         raise ValueError(usage)
-        //     assert k_grid.ndim == 1, "k grid must be a 1d array"
-            // n_points = k_grid.size
-        // elif radial_grid is not None:
-        //     if max_radius is not None or n_points is not None:
-        //         raise ValueError(usage)
-        //     assert radial_grid.ndim == 1, "Radial grid must be a 1d array"
-            let max_radius = *radial_grid.max().unwrap();
-            let n_points = radial_grid.len();
-
-
-        // Calculate N+1 roots must be calculated before max_radius can be derived from k_grid
-        let alpha = bessel_zeros(order, n_points + 1);
-        let alpha_n1 = alpha.last().unwrap();
-        let alpha = alpha.slice(s![0..n_points]);
-
-        // if k_grid is not None:
-        //     v_max = np.max(k_grid) / (2 * np.pi)
-        //     max_radius = self.alpha_n1 / (2 * np.pi * v_max)
-        // self._max_radius = max_radius
-
-        // Calculate co-ordinate vectors
-        let r = alpha * max_radius / alpha_n1;
-        let v = alpha / (2.0 * pi * max_radius);
-        let kr = 2.0 * pi * v;
-        let v_max = alpha_n1 / (2.0 * pi * max_radius);
-        let S = alpha_n1;
-
-        // Calculate hankel matrix and vectors
-        let jp = scipy_bessel.jv(order, (alpha[:, np.newaxis] @ alpha[np.newaxis, :]) / S);
-        let jp1 = (scipy_bessel.jv(order + 1, alpha)).abs();
-        let T = 2 * jp / ((jp1[:, np.newaxis] @ jp1[np.newaxis, :]) * S);
-        let JR = jp1 / max_radius;
-        let JV = jp1 / v_max;
-
-        Self{
-            order,
-            n_points,
-           original_radial_grid: Some(radial_grid),
-           max_radius,
-           original_k_grid: None,
-           alpha: alpha.slice()
-           };
+    fn default_epsilon() -> Self::Epsilon {
+        f64::default_epsilon()
     }
 
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        self.relative_eq(other, epsilon, Self::default_max_relative())
+    }
 }
- */
+
+impl RelativeEq for HankelTransform {
+    fn default_max_relative() -> Self::Epsilon {
+        f64::default_max_relative()
+    }
+
+    fn relative_eq(
+        &self,
+        other: &Self,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        self.order == other.order
+            && self.n_points == other.n_points
+            && self
+                .max_radius
+                .relative_eq(&other.max_radius, epsilon, max_relative)
+            && self.r.relative_eq(&other.r, epsilon, max_relative)
+            && self.kr.relative_eq(&other.kr, epsilon, max_relative)
+            && self.v.relative_eq(&other.v, epsilon, max_relative)
+            && self.t.relative_eq(&other.t, epsilon, max_relative)
+            && self.jr.relative_eq(&other.jr, epsilon, max_relative)
+            && self.jv.relative_eq(&other.jv, epsilon, max_relative)
+    }
+}
+
 impl HankelTransform {
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
         Self::build(n_points, Some(max_radius), order, None, None)
     }
 
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
-        /*
-           usage = 'Either radial_grid or k_grid or both max_radius and n_points must be supplied'
-           if radial_grid is None and k_grid is None:
-               if max_radius is None or n_points is None:
-                   raise ValueError(usage)
-           elif k_grid is not None:
-               if max_radius is not None or n_points is not None or radial_grid is not None:
-                   raise ValueError(usage)
-               assert k_grid.ndim == 1, 'k grid must be a 1d array'
-               n_points = k_grid.size
-           elif radial_grid is not None:
-               if max_radius is not None or n_points is not None:
-                   raise ValueError(usage)
-               assert radial_grid.ndim == 1, 'Radial grid must be a 1d array'
-               max_radius = np.max(radial_grid)
-               n_points = radial_grid.size
-           else:
-               raise ValueError(usage)  # pragma: no cover - backup case: cannot currently be reached
-        */
         Self::build(
             radial_grid.len(),
             Some(*radial_grid.max().unwrap()),
@@ -238,13 +195,9 @@ impl HankelTransform {
             max_radius,
             original_radial_grid,
             original_k_grid,
-            _alpha: alpha,
-            _alpha_n1: alpha_n1,
             r,
             kr,
             v,
-            _v_max: v_max,
-            _s: s,
             t,
             jr,
             jv,

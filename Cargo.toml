@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ndarray = "0.16"
+ndarray = { version = "0.16", features = ["approx"] }
 ndarray-stats = "0.6.0"
 conv = "0.3.3"
 # scilib = "1.0.0"
