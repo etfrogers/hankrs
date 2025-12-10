@@ -199,7 +199,6 @@ impl HankelTransform {
         let alpha = Array1::from_vec(bessel_zeros(&BesselFunType::J, order, n_points + 1, 1e-6));
 
         let alpha_n1 = alpha[n_points];
-        println!("{}", alpha);
         let alpha = alpha.slice(s![0..n_points]).to_owned();
 
         let max_radius = match max_radius {
@@ -220,13 +219,7 @@ impl HankelTransform {
         let s = alpha_n1;
 
         // Calculate hankel matrix and vectors
-        // jp = scipy_bessel.jv(order, (self.alpha[:, np.newaxis] @ self.alpha[np.newaxis, :]) / self.S)
-        // jp1 = np.abs(scipy_bessel.jv(order + 1, self.alpha))
-        // self.T = 2 * jp / ((jp1[:, np.newaxis] @ jp1[np.newaxis, :]) * self.S)
-        // self.JR = jp1 / self.max_radius
-        // self.JV = jp1 / self.v_max
         let alpha_row = alpha.to_shape((n_points, 1)).unwrap();
-        // let alpha_row: Array2<_> = alpha.slice(s![.., NewAxis]).to_owned();
         let alpha_col: Array2<_> = alpha.slice(s![NewAxis, ..]).to_owned();
         let alpha_matrix = alpha_row.dot(&alpha_col);
         let jp: Array2<_> = alpha_matrix.map(|a| bessel_j(order, a / s).unwrap());
@@ -239,21 +232,6 @@ impl HankelTransform {
         let jr: Array1<_> = jp1.clone() / max_radius;
         let jv: Array1<_> = jp1 / v_max;
 
-        // jp := mat.NewDense(h.nPoints, h.nPoints, nil)
-        // jp.Outer(1/h.S, h.alpha, h.alpha)
-        // jp.Apply(func(i, j int, v float64) float64 { return math.Jn(h.order, v) }, jp)
-
-        // jp1 := mat.NewVecDense(h.nPoints, nil)
-        // utils.ApplyVec(func(v float64) float64 { return math.Abs(math.Jn(h.order+1, v)) }, jp1, h.alpha)
-        // jp1Mat := mat.NewDense(h.nPoints, h.nPoints, nil)
-        // jp1Mat.Outer(h.S, jp1, jp1)
-        // h.T = *mat.NewDense(h.nPoints, h.nPoints, nil)
-        // h.T.DivElem(jp, jp1Mat)
-        // h.T.Scale(2, &(h.T))
-        // h.JR = *mat.NewVecDense(h.nPoints, nil)
-        // h.JR.ScaleVec(1/h.maxRadius, jp1)
-        // h.JV = *mat.NewVecDense(h.nPoints, nil)
-        // h.JV.ScaleVec(1/h.vMax, jp1)
         Self {
             order,
             n_points,
