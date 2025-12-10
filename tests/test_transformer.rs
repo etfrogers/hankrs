@@ -3,18 +3,26 @@ mod utils;
 use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
 use hankrs::hankel::HankelTransform;
-use ndarray::{Array1, Axis, Ix1};
+use ndarray::{Array1, Array2, Axis, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
-use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit};
+use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit, sync::LazyLock};
 use utils::{assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat};
 
 use crate::utils::assert_arrays_equal;
-// const pi: f64 = math.PI;
-const MAX_ORDER: i32 = 4;
+
+static TRANSFORMERS: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
+    [
+        HankelTransform::new_from_r_grid(0, radius()),
+        HankelTransform::new_from_r_grid(1, radius()),
+        HankelTransform::new_from_r_grid(2, radius()),
+        HankelTransform::new_from_r_grid(3, radius()),
+        HankelTransform::new_from_r_grid(4, radius()),
+    ]
+});
 
 fn random_vec_like(v: &Array1<f64>) -> Array1<f64> {
     let shape = v.dim();
@@ -53,30 +61,23 @@ impl<'a> Shape<'a> {
                   &|r: f64|  1.0 / (r.pow(2.0_f64)+0.1.pow(2.0_f64)).sqrt() ))]
 fn smooth_shapes(#[case] shape: Shape) {}
 
-#[template]
-#[rstest]
-#[apply(smooth_shapes)]
-
-fn all_shapes(#[case] shape: Shape) {}
-
 #[fixture]
 fn radius() -> Array1<f64> {
     Array1::linspace(0.0, 3.0, 1024)
 }
 
 #[fixture]
-// #[rstest]
 #[once]
-fn transformer(radius: Array1<f64>) -> HankelTransform {
+fn transformer_zero_order(radius: Array1<f64>) -> HankelTransform {
     let order = 0;
     HankelTransform::new_from_r_grid(order, radius)
 }
 
 #[rstest]
-fn test_round_trip(transformer: &HankelTransform) {
-    let fun = random_vec_like(transformer.original_radial_grid().unwrap());
-    let ht = transformer.qdht(&fun, Axis(0));
-    let reconstructed = transformer.iqdht(&ht, Axis(0));
+fn test_round_trip(transformer_zero_order: &HankelTransform) {
+    let fun = random_vec_like(transformer_zero_order.original_radial_grid().unwrap());
+    let ht = transformer_zero_order.qdht(&fun, Axis(0));
+    let reconstructed = transformer_zero_order.iqdht(&ht, Axis(0));
     assert_relative_eq!(
         fun.as_slice().unwrap(),
         reconstructed.as_slice().unwrap(),
@@ -94,8 +95,9 @@ fn test_round_trip(transformer: &HankelTransform) {
 fn test_round_trip_r_interpolation(
     shape: Shape,
     radius: Array1<f64>,
-    transformer: &HankelTransform,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
 ) {
+    let transformer = &TRANSFORMERS[order_ind];
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
     let fun = radius.mapv_into(shape.f);
@@ -107,10 +109,13 @@ fn test_round_trip_r_interpolation(
 #[apply(smooth_shapes)]
 #[rstest]
 #[trace]
-fn test_round_trip_k_interpolation(shape: Shape, radius: Array1<f64>) {
+fn test_round_trip_k_interpolation(
+    shape: Shape,
+    radius: Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order: i32,
+) {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let order = 0;
     let k_grid = radius.mapv(|r| r / 10.0);
     let transformer = HankelTransform::new_from_k_grid(order, k_grid);
 
@@ -125,9 +130,9 @@ fn test_round_trip_k_interpolation(shape: Shape, radius: Array1<f64>) {
 fn test_round_trip_with_interpolation(
     shape: Shape,
     radius: Array1<f64>,
-    transformer: &HankelTransform,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
 ) {
-    // the function must be smoothish for interpolation
+    let transformer = &TRANSFORMERS[order_ind]; // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
     let fun = radius.mapv_into(shape.f);
     let fun_hr = transformer.to_transform_r(&fun).unwrap();
@@ -182,7 +187,12 @@ fn test_original_rk_grid() {
 #[apply(smooth_shapes)]
 #[case(Shape::new("random", &|_| random::<f64>()*10.0))]
 #[rstest]
-fn test_parsevals_theorem(shape: Shape, transformer: &HankelTransform, radius: Array1<f64>) {
+fn test_parsevals_theorem(
+    shape: Shape,
+    radius: Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
     // As per equation 11 of Guizar-Sicairos, the UNSCALED transform is unitary,
     // i.e. if we pass in the unscaled fr (=Fr), the unscaled fv (=Fv)should have the
     // same sum of abs val^2. Here the unscaled transform is simply given by
@@ -193,7 +203,7 @@ fn test_parsevals_theorem(shape: Shape, transformer: &HankelTransform, radius: A
     let ht = transformer.transform_matrix() * fun;
     let intensity_after = ht.mapv(intensity);
     let energy_after = intensity_after.sum();
-    assert_relative_eq!(energy_before, energy_after, epsilon = 1e-8);
+    assert_relative_eq!(energy_before, energy_after, max_relative = 1e-10);
 }
 
 fn intensity(v: f64) -> f64 {
@@ -234,12 +244,10 @@ fn test_energy_conservation(
 // -------------------
 
 #[rstest]
-fn test_jinc(
-    #[values(1.0, 0.7, 0.1)] a: f64,
-    #[values(0, 1, 2, 3, 4)] order: i32,
-    radius: Array1<f64>,
-) {
-    let transformer = HankelTransform::new_from_r_grid(order, radius);
+fn test_jinc(#[values(1.0, 0.7, 0.1)] a: f64, #[values(0, 1, 2, 3, 4)] order_ind: usize) {
+    let transformer = &TRANSFORMERS[order_ind];
+    // let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let order = transformer.order();
     let f = generalised_jinc(transformer.radius(), a, order);
     let expected_ht = generalised_top_hat(transformer.frequency(), a, order);
     let actual_ht = transformer.qdht(&f, Axis(0));
@@ -248,12 +256,9 @@ fn test_jinc(
 }
 
 #[rstest]
-fn test_top_hat(
-    #[values(1.0, 1.5, 0.1)] a: f64,
-    #[values(0, 1, 2, 3, 4)] order: i32,
-    radius: Array1<f64>,
-) {
-    let transformer = HankelTransform::new_from_r_grid(order, radius);
+fn test_top_hat(#[values(1.0, 1.5, 0.1)] a: f64, #[values(0, 1, 2, 3, 4)] order_ind: usize) {
+    let transformer = &TRANSFORMERS[order_ind];
+    let order = transformer.order();
     let f = generalised_top_hat(transformer.radius(), a, order);
     let expected_ht = generalised_jinc(transformer.frequency(), a, order);
     let actual_ht = transformer.qdht(&f.into_dyn(), Axis(0));
@@ -264,52 +269,57 @@ fn test_top_hat(
 }
 
 #[rstest]
-fn test_gaussian(transformer: &HankelTransform, #[values(2.0, 5.0, 10.0)] a: f64) {
+fn test_gaussian(transformer_zero_order: &HankelTransform, #[values(2.0, 5.0, 10.0)] a: f64) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
     let a2 = a.powi(2);
-    let f = transformer.radius().mapv(|r| (-a2 * r.powi(2)).exp());
-    let expected_ht = transformer
+    let f = transformer_zero_order
+        .radius()
+        .mapv(|r| (-a2 * r.powi(2)).exp());
+    let expected_ht = transformer_zero_order
         .kr()
         .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
-    let actual_ht = transformer.qdht(&f.into_dyn(), Axis(0));
+    let actual_ht = transformer_zero_order.qdht(&f.into_dyn(), Axis(0));
     assert_arrays_equal(&expected_ht, &actual_ht, 1e-9, 0.0);
 }
 
 #[rstest]
-fn test_inverse_gaussian(transformer: &HankelTransform, #[values(2.0, 5.0, 10.0)] a: f64) {
+fn test_inverse_gaussian(
+    transformer_zero_order: &HankelTransform,
+    #[values(2.0, 5.0, 10.0)] a: f64,
+) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
 
     let a2 = a.powi(2);
-    let expected_f = transformer.radius().mapv(|r| (-a2 * r.powi(2)).exp());
-    let ht = transformer
+    let expected_f = transformer_zero_order
+        .radius()
+        .mapv(|r| (-a2 * r.powi(2)).exp());
+    let ht = transformer_zero_order
         .kr()
         .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
-    let actual_f = transformer.iqdht(&ht.into_dyn(), Axis(0));
+    let actual_f = transformer_zero_order.iqdht(&ht.into_dyn(), Axis(0));
     assert_arrays_equal(&actual_f, &expected_f, 1e-9, 0.0);
 }
 
 #[rstest]
-// @pytest.mark.parametrize('axis', [0, 1])
-fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) {
+fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer_zero_order: &HankelTransform) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    // transformer = HankelTransform(order=0, radial_grid=radius);
     let a = Array1::linspace(2.0, 10.0, 50);
     let mut dims_a = Array1::ones(2);
     dims_a[1 - axis] = a.len();
     let mut dims_r = Array1::ones(2);
-    dims_r[axis] = transformer.radius().len();
+    dims_r[axis] = transformer_zero_order.radius().len();
     let a_reshaped = a.to_shape(dims_a.as_slice().unwrap()).unwrap();
-    let r_reshaped = transformer
+    let r_reshaped = transformer_zero_order
         .radius()
         .to_shape(dims_r.as_slice().unwrap())
         .unwrap();
-    let kr_reshaped = transformer
+    let kr_reshaped = transformer_zero_order
         .kr()
         .to_shape(dims_r.as_slice().unwrap())
         .unwrap();
@@ -318,12 +328,12 @@ fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) 
         * PI
         * (1.0 / (2.0 * a_reshaped.powi(2)))
         * (-kr_reshaped.powi(2) / (4.0 * a_reshaped.powi(2))).exp();
-    let actual_ht = transformer.qdht(&f, Axis(axis));
+    let actual_ht = transformer_zero_order.qdht(&f, Axis(axis));
     assert_arrays_equal(&expected_ht, &actual_ht, 1e-8, 1e-5);
 }
 
 #[rstest]
-fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTransform) {
+fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer_zero_order: &HankelTransform) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
@@ -331,14 +341,14 @@ fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTra
     let mut dims_a = Array1::ones(2);
     dims_a[1 - axis] = a.len();
     let mut dims_r = Array1::ones(2);
-    dims_r[axis] = transformer.radius().len();
+    dims_r[axis] = transformer_zero_order.radius().len();
     let a_reshaped: ndarray::ArrayBase<ndarray::CowRepr<'_, f64>, _> =
         a.to_shape(dims_a.as_slice().unwrap()).unwrap();
-    let r_reshaped = transformer
+    let r_reshaped = transformer_zero_order
         .radius()
         .to_shape(dims_r.as_slice().unwrap())
         .unwrap();
-    let kr_reshaped = transformer
+    let kr_reshaped = transformer_zero_order
         .kr()
         .to_shape(dims_r.as_slice().unwrap())
         .unwrap();
@@ -346,7 +356,7 @@ fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer: &HankelTra
         * PI
         * (1.0 / (2.0 * a_reshaped.powi(2)))
         * (-kr_reshaped.powi(2) / (4.0 * a_reshaped.powi(2))).exp();
-    let actual_f = transformer.iqdht(&ht, Axis(axis));
+    let actual_f = transformer_zero_order.iqdht(&ht, Axis(axis));
     let expected_f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
     assert_arrays_equal(&expected_f, &actual_f, 1e-8, 1e-5);
 }
@@ -601,21 +611,33 @@ def test_round_trip_k_interpolation_2d(radius: np.ndarray, order: int, shape: Ca
 
 
 
-
-@pytest.mark.parametrize('two_d_size', [1, 100, 27])
-@pytest.mark.parametrize('axis', [0, 1])
-@pytest.mark.parametrize('a', [1, 0.7, 0.1])
-def test_jinc2d(transformer: HankelTransform, a: float, axis: int, two_d_size: int):
-    f = generalised_jinc(transformer.r, a, transformer.order)
-    second_axis = np.outer(np.linspace(0, 6, two_d_size), f)
-    expected_ht = generalised_top_hat(transformer.v, a, transformer.order)
-    if axis == 0:
-        f_array = np.outer(f, second_axis)
-        expected_ht_array = np.outer(expected_ht, second_axis)
-    else:
-        f_array = np.outer(second_axis, f)
-        expected_ht_array = np.outer(second_axis, expected_ht)
-    actual_ht = transformer.qdht(f_array, axis=axis)
-    error = np.mean(np.abs(expected_ht_array-actual_ht))
-    assert error < 1e-3
 */
+
+fn outer(x: &Array1<f64>, y: &Array1<f64>) -> Array2<f64> {
+    let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
+    let x_reshaped = x.to_shape((size_x, 1)).unwrap();
+    let y_reshaped = y.to_shape((1, size_y)).unwrap();
+    x_reshaped.dot(&y_reshaped)
+}
+
+#[rstest]
+fn test_jinc2d(
+    #[values(1.0, 0.7, 0.1)] a: f64,
+    #[values(0, 1)] axis: usize,
+    #[values(1, 100, 27)] two_d_size: usize,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+    let f = generalised_jinc(transformer.radius(), a, transformer.order());
+    // using a range up to 2.0 to make error magnitude the same as 1D case.
+    let second_axis = &Array1::linspace(0.0, 2.0, two_d_size);
+    let expected_ht = generalised_top_hat(transformer.frequency(), a, transformer.order());
+    let (f_array, expected_ht_array) = if axis == 0 {
+        (outer(&f, &second_axis), outer(&expected_ht, &second_axis))
+    } else {
+        (outer(&second_axis, &f), outer(&second_axis, &expected_ht))
+    };
+    let actual_ht = transformer.qdht(&f_array, Axis(axis));
+    let error = (expected_ht_array).mean_abs_err(&actual_ht).unwrap();
+    assert!(error < 1e-3, "Error was {error}");
+}
