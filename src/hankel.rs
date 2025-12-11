@@ -1,5 +1,5 @@
 use approx::{AbsDiffEq, RelativeEq};
-use ndarray::{Array, Array1, Array2, Axis, Dimension, NewAxis, RemoveAxis, s};
+use ndarray::{Array, Array1, Array2, Axis, Dim, DimAdd, Dimension, IxDyn, NewAxis, RemoveAxis, s};
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
 use std::{f64::consts::PI, fmt::Debug};
@@ -252,16 +252,20 @@ impl HankelTransform {
     //     :meth:`HankelTransform.qdht` (sampled at ``self.r``)
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_transform_r(
+    pub fn to_transform_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+        self.to_transform_r_nd(function, Axis(0))
+    }
+
+    pub fn to_transform_r_nd<D: Dimension + RemoveAxis>(
         &self,
-        function: &Array1<f64>, /*,  axis: Axis*/
-    ) -> Result<Array1<f64>, &str> {
-        //         let data =     array![0.0,  0.5, 1.0 ];
-        // let x =        array![0.0,  1.0, 2.0 ];
-        // let query =    array![0.5,  1.0, 1.5 ];
-        // let expected = array![0.25, 0.5, 0.75];
+        function: &Array<f64, D>,
+        axis: Axis,
+    ) -> Result<Array<f64, D>, &str>
+    where
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
         if let Some(r_grid) = self.original_radial_grid() {
-            Ok(spline(r_grid, function, &self.r, Axis(0)))
+            Ok(spline(r_grid, function, &self.r, axis))
         } else {
             Err(
                 "Attempted to interpolate onto transform radial grid on HankelTransform \
@@ -287,12 +291,21 @@ impl HankelTransform {
     // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_radial_grid`.
     // :rtype: :class:`numpy.ndarray`
 
-    pub fn to_original_r(
+    pub fn to_original_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+        self.to_original_r_nd(function, Axis(0))
+    }
+
+    pub fn to_original_r_nd<D>(
         &self,
-        function: &Array1<f64>, /* , axis: Axis*/
-    ) -> Result<Array1<f64>, &str> {
+        function: &Array<f64, D>,
+        axis: Axis,
+    ) -> Result<Array<f64, D>, &str>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
         if let Some(r_grid) = self.original_radial_grid() {
-            Ok(spline(&self.r, function, r_grid, Axis(0)))
+            Ok(spline(&self.r, function, r_grid, axis))
         } else {
             Err(
                 "Attempted to interpolate onto original_radial_grid on HankelTransform \
@@ -320,8 +333,19 @@ impl HankelTransform {
     //     :meth:`HankelTransform.qdht` (sampled at ``self.kr``)
     // :rtype: :class:`numpy.ndarray`
     pub fn to_transform_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+        self.to_transform_k_nd(function, Axis(0))
+    }
+
+    pub fn to_transform_k_nd<D: Dimension + RemoveAxis>(
+        &self,
+        function: &Array<f64, D>,
+        axis: Axis,
+    ) -> Result<Array<f64, D>, &str>
+    where
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
         if let Some(k_grid) = self.original_k_grid() {
-            Ok(spline(k_grid, function, &self.kr, Axis(0)))
+            Ok(spline(k_grid, function, &self.kr, axis))
         } else {
             Err(
                 "Attempted to interpolate onto transform k grid on HankelTransform \
@@ -346,10 +370,20 @@ impl HankelTransform {
 
     // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_k_grid`.
     // :rtype: :class:`numpy.ndarray`
-
     pub fn to_original_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+        self.to_original_k_nd(function, Axis(0))
+    }
+
+    pub fn to_original_k_nd<D: Dimension + RemoveAxis>(
+        &self,
+        function: &Array<f64, D>,
+        axis: Axis,
+    ) -> Result<Array<f64, D>, &str>
+    where
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
         if let Some(k_grid) = self.original_k_grid() {
-            Ok(spline(&self.kr, function, k_grid, Axis(0)))
+            Ok(spline(&self.kr, function, k_grid, axis))
         } else {
             Err(
                 "Attempted to interpolate onto original_k_grid on HankelTransform \
@@ -443,13 +477,75 @@ impl HankelTransform {
     }
 }
 
-fn spline(x0: &Array1<f64>, y0: &Array1<f64>, x: &Array1<f64>, _axis: Axis) -> Array1<f64> {
+pub fn perms<D: Dimension>(axis: Axis) -> (D, D) {
+    let ndim = D::NDIM.expect("Dimension must be fixed");
+    let mut forward_perm: Vec<usize> = (0..ndim).collect();
+    forward_perm.remove(axis.index());
+    forward_perm.insert(0, axis.index());
+
+    let mut backward_perm: Vec<usize> = (0..ndim).collect();
+    backward_perm.remove(0);
+    backward_perm.insert(axis.index(), 0);
+
+    let forward_dim = IxDyn(&forward_perm);
+    let backward_dim = IxDyn(&backward_perm);
+    let forward_d: D = D::from_dimension(&forward_dim).expect("Dimension conversion failed");
+    let backward_d: D = D::from_dimension(&backward_dim).expect("Dimension conversion failed");
+    (forward_d, backward_d)
+}
+
+/// Move axis `axis` to the front (axis 0), preserving the order of the others
+pub fn move_axis_to_front<D>(arr: &Array<f64, D>, axis: usize) -> Array<f64, D>
+where
+    // S: Data<Elem = A>,
+    D: Dimension + Clone,
+{
+    assert!(axis < arr.ndim(), "Axis out of bounds");
+
+    // Build permutation: [axis, 0, 1, ..., axis-1, axis+1, ...]
+    let mut perm: Vec<usize> = (0..arr.ndim()).collect();
+    perm.remove(axis);
+    perm.insert(0, axis);
+    // Convert perm (IxDyn) into D
+    let perm_dim = IxDyn(&perm);
+    let perm_d: D = D::from_dimension(&perm_dim).expect("Dimension conversion failed");
+    arr.view().permuted_axes(perm_d).to_owned()
+}
+
+fn spline<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
+where
+    D: Dimension + RemoveAxis,
+    Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+{
     // f = interpolate.interp1d(x0, y0, axis=axis, fill_value="extrapolate", kind="cubic")
     // return f(x)
-    let interpolator = Interp1DBuilder::new(y0.clone())
+    let (y0, inverse_perms) = if axis != Axis(0) {
+        let (forward_perms, inverse_perms) = perms::<D>(axis);
+        let mut y0_ = y0.view();
+        y0_ = y0_.permuted_axes(forward_perms);
+
+        (y0_.to_owned(), Some(inverse_perms))
+    } else {
+        (y0.clone(), None)
+    };
+    let interpolator = Interp1DBuilder::new(y0.into_dyn())
         .x(x0.clone())
         .strategy(CubicSpline::new().extrapolate(true))
         .build()
         .unwrap();
-    interpolator.interp_array(x).unwrap()
+    let mut result = interpolator
+        .interp_array(x)
+        .unwrap()
+        .into_dimensionality::<D>()
+        .unwrap();
+    if axis != Axis(0) {
+        result = result.permuted_axes(inverse_perms.unwrap()).to_owned();
+    }
+    result
+    // let interpolator = Interp1DBuilder::new(y0.clone())
+    //     .x(x0.clone())
+    //     .strategy(CubicSpline::new().extrapolate(true))
+    //     .build()
+    //     .unwrap();
+    // interpolator.interp_array(x).unwrap()
 }

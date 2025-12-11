@@ -426,7 +426,7 @@ fn test_sinc(#[values(1, 4)] p: i32) {
         assert!(*de < threshold);
     });
 }
-
+/*
 fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
     let out_file_name = format!("graph{p}.png");
     use plotters::prelude::*;
@@ -481,7 +481,7 @@ fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
     root.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");
     println!("Result has been saved to {}", out_file_name);
 }
-
+*/
 // ------------------------
 // End Known Transfom pairs
 // ------------------------
@@ -516,49 +516,6 @@ fn test_round_trip_3d(
     let reconstructed = transformer.iqdht(&ht, Axis(axis));
     assert_arrays_equal(&func, &reconstructed, 1e-8, 1e-8);
 }
-/*
-def test_initialisation_errors():
-    r_1d = np.linspace(0, 1, 10)
-    k_1d = r_1d.copy()
-    r_2d = np.repeat(r_1d[:, np.newaxis], repeats=5, axis=1)
-    k_2d = r_2d.copy()
-    with pytest.raises(ValueError):
-        // missing any radius or k info
-        HankelTransform(order=0)
-    with pytest.raises(ValueError):
-        // missing n_points
-        HankelTransform(order=0, max_radius=1)
-    with pytest.raises(ValueError):
-        // missing max_radius
-        HankelTransform(order=0, n_points=10)
-    with pytest.raises(ValueError):
-        // radial_grid and n_points
-        HankelTransform(order=0, radial_grid=r_1d, n_points=10)
-    with pytest.raises(ValueError):
-        // radial_grid and max_radius
-        HankelTransform(order=0, radial_grid=r_1d, max_radius=1)
-
-    with pytest.raises(ValueError):
-        // k_grid and n_points
-        HankelTransform(order=0, k_grid=k_1d, n_points=10)
-    with pytest.raises(ValueError):
-        // k_grid and max_radius
-        HankelTransform(order=0, k_grid=k_1d, max_radius=1)
-    with pytest.raises(ValueError):
-        // k_grid and r_grid
-        HankelTransform(order=0, k_grid=k_1d, radial_grid=r_1d)
-
-    with pytest.raises(AssertionError):
-        HankelTransform(order=0, radial_grid=r_2d)
-    with pytest.raises(AssertionError):
-        HankelTransform(order=0, radial_grid=k_2d)
-
-    // no error
-    _ = HankelTransform(order=0, max_radius=1, n_points=10)
-    _ = HankelTransform(order=0, radial_grid=r_1d)
-    _ = HankelTransform(order=0, k_grid=k_1d)
-
-*/
 
 #[rstest]
 fn test_r_creation_equivalence(
@@ -576,10 +533,7 @@ fn test_r_creation_equivalence(
         epsilon = 1e-8
     );
 }
-/*
-// @pytest.mark.parametrize('shape', smooth_shapes)
-// @pytest.mark.parametrize('order', orders)
-// @pytest.mark.parametrize('axis', [0, 1])
+
 #[apply(smooth_shapes)]
 #[rstest]
 fn test_round_trip_r_interpolation_2d(
@@ -589,20 +543,21 @@ fn test_round_trip_r_interpolation_2d(
     #[values(0, 1)] axis: usize,
 ) {
     let transformer = &TRANSFORMERS[order_ind];
-    // fn test_round_trip_r_interpolation_2d(radius: np.ndarray, order: int, shape: Callable, axis: int):
-    // transformer = HankelTransform(order=order, radial_grid=radius)
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    dims_amplitude = np.ones(2, np.int);
-    dims_amplitude[1 - axis] = 10;
-    amplitude = np.random.random(dims_amplitude);
-    dims_radius = np.ones(2, np.int);
-    dims_radius[axis] = len(radius);
-    func = np.reshape(shape(radius), dims_radius) * np.reshape(amplitude, dims_amplitude);
-    transform_func = transformer.to_transform_r(func, axis = axis);
-    reconstructed_func = transformer.to_original_r(transform_func, axis = axis);
-    assert_arrays_equal(func, reconstructed_func, 1e-8, 1e-4);
+    let amplitude = random_array(Dim(10));
+    let func_1d = radius.mapv(shape.f);
+    let func = if axis == 0 {
+        outer(&func_1d, &amplitude)
+    } else {
+        outer(&amplitude, &func_1d)
+    };
+    let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
+    let reconstructed_func = transformer
+        .to_original_r_nd(&transform_func, Axis(axis))
+        .unwrap();
+    assert_arrays_equal(&func, &reconstructed_func, 1e-8, 1e-4);
 }
 
 #[apply(smooth_shapes)]
@@ -615,30 +570,23 @@ fn test_round_trip_k_interpolation_2d(
 ) {
     let k_grid = &radius / 10.0;
     let transformer = HankelTransform::new_from_k_grid(order, k_grid.clone());
-    // def test_round_trip_k_interpolation_2d(radius: np.ndarray, order: int
-    // @pytest.mark.parametrize('shape', smooth_shapes)
-    // @pytest.mark.parametrize('order', orders)
-    // @pytest.mark.parametrize('axis', [0, 1])
-    // def test_round_trip_k_interpolation_2d(radius: np.ndarray, order: int, shape: Callable, axis: int):
-    //     k_grid = radius/10
-    //     transformer = HankelTransform(order=order, k_grid=k_grid)
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let mut dims_amplitude = [1, 1]; //np.ones(2, np.int);
-    dims_amplitude[1 - axis] = 10;
-    let amplitude = random_array(Dim(dims_amplitude));
-    let mut dims_k = [1, 1];
-    dims_k[axis] = k_grid.len();
-    let func = &k_grid.mapv(shape.f) * &amplitude.index_axis(Axis(1 - axis), 0);
-    // dims_k = np.ones(2, np.int);
-    // dims_k[axis] = len(radius);
-    // func = np.reshape(shape(k_grid), dims_k) * np.reshape(amplitude, dims_amplitude);
-    let transform_func = transformer.to_transform_k(func, axis = axis);
-    reconstructed_func = transformer.to_original_k(transform_func, axis = axis);
+    let amplitude = random_array(Dim(10));
+    let func_1d = &k_grid.mapv(shape.f);
+    let func = if axis == 0 {
+        outer(&func_1d, &amplitude)
+    } else {
+        outer(&amplitude, &func_1d)
+    };
+    let transform_func = transformer.to_transform_k_nd(&func, Axis(axis)).unwrap();
+    let reconstructed_func = transformer
+        .to_original_k_nd(&transform_func, Axis(axis))
+        .unwrap();
     assert_arrays_equal(&func, &reconstructed_func, 1e-8, 1e-4);
 }
-*/
+
 fn outer(x: &Array1<f64>, y: &Array1<f64>) -> Array2<f64> {
     let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
     let x_reshaped = x.to_shape((size_x, 1)).unwrap();
