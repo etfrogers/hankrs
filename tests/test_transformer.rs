@@ -2,15 +2,17 @@ mod utils;
 
 use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
-use hankrs::hankel::HankelTransform;
-use ndarray::{Array, Array1, Array2, Axis, Dim, Dimension, Ix1};
+use hankrs::HankelTransform;
+use ndarray::{Array, Array1, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
 use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit, sync::LazyLock};
-use utils::{assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat};
+use utils::{
+    assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat, outer, radius,
+};
 
 use crate::utils::assert_arrays_equal;
 
@@ -62,11 +64,6 @@ impl<'a> Shape<'a> {
 #[case(Shape::new("1/(sqrt(r^2 + 0.1^2))",
                   &|r: f64|  1.0 / (r.pow(2.0_f64)+0.1.pow(2.0_f64)).sqrt() ))]
 fn smooth_shapes(#[case] shape: Shape) {}
-
-#[fixture]
-fn radius() -> Array1<f64> {
-    Array1::linspace(0.0, 3.0, 1024)
-}
 
 #[fixture]
 #[once]
@@ -585,13 +582,6 @@ fn test_round_trip_k_interpolation_2d(
         .to_original_k_nd(&transform_func, Axis(axis))
         .unwrap();
     assert_arrays_equal(&func, &reconstructed_func, 1e-8, 1e-4);
-}
-
-fn outer(x: &Array1<f64>, y: &Array1<f64>) -> Array2<f64> {
-    let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
-    let x_reshaped = x.to_shape((size_x, 1)).unwrap();
-    let y_reshaped = y.to_shape((1, size_y)).unwrap();
-    x_reshaped.dot(&y_reshaped)
 }
 
 #[rstest]

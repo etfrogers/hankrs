@@ -475,6 +475,14 @@ impl HankelTransform {
     pub fn kr(&self) -> &Array1<f64> {
         &self.kr
     }
+
+    pub(crate) fn into_radius(self) -> Array1<f64> {
+        self.r
+    }
+
+    pub(crate) fn into_kr(self) -> Array1<f64> {
+        self.kr
+    }
 }
 
 pub fn perms<D: Dimension>(axis: Axis) -> (D, D) {
@@ -494,31 +502,11 @@ pub fn perms<D: Dimension>(axis: Axis) -> (D, D) {
     (forward_d, backward_d)
 }
 
-/// Move axis `axis` to the front (axis 0), preserving the order of the others
-pub fn move_axis_to_front<D>(arr: &Array<f64, D>, axis: usize) -> Array<f64, D>
-where
-    // S: Data<Elem = A>,
-    D: Dimension + Clone,
-{
-    assert!(axis < arr.ndim(), "Axis out of bounds");
-
-    // Build permutation: [axis, 0, 1, ..., axis-1, axis+1, ...]
-    let mut perm: Vec<usize> = (0..arr.ndim()).collect();
-    perm.remove(axis);
-    perm.insert(0, axis);
-    // Convert perm (IxDyn) into D
-    let perm_dim = IxDyn(&perm);
-    let perm_d: D = D::from_dimension(&perm_dim).expect("Dimension conversion failed");
-    arr.view().permuted_axes(perm_d).to_owned()
-}
-
 fn spline<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
 {
-    // f = interpolate.interp1d(x0, y0, axis=axis, fill_value="extrapolate", kind="cubic")
-    // return f(x)
     let (y0, inverse_perms) = if axis != Axis(0) {
         let (forward_perms, inverse_perms) = perms::<D>(axis);
         let mut y0_ = y0.view();
@@ -542,10 +530,4 @@ where
         result = result.permuted_axes(inverse_perms.unwrap()).to_owned();
     }
     result
-    // let interpolator = Interp1DBuilder::new(y0.clone())
-    //     .x(x0.clone())
-    //     .strategy(CubicSpline::new().extrapolate(true))
-    //     .build()
-    //     .unwrap();
-    // interpolator.interp_array(x).unwrap()
 }

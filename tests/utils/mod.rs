@@ -3,12 +3,24 @@ use std::f64::{INFINITY, consts::PI};
 use amos_bessel_rs::bessel_j;
 use approx::assert_abs_diff_eq;
 use approx::{AbsDiffEq, RelativeEq, assert_relative_eq, relative_eq};
-use ndarray::{Array1, s};
-use rstest::rstest;
+use ndarray::{Array1, Array2, s};
+use rstest::{fixture, rstest};
+
+#[fixture]
+pub fn radius() -> Array1<f64> {
+    Array1::linspace(0.0, 3.0, 1024)
+}
 
 // ----------------
 // HELPER FUNCTIONS
 // ----------------
+
+pub fn outer(x: &Array1<f64>, y: &Array1<f64>) -> Array2<f64> {
+    let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
+    let x_reshaped = x.to_shape((size_x, 1)).unwrap();
+    let y_reshaped = y.to_shape((1, size_y)).unwrap();
+    x_reshaped.dot(&y_reshaped)
+}
 
 #[derive(Debug, PartialEq)]
 pub struct _Array1Comp(pub Array1<f64>);
