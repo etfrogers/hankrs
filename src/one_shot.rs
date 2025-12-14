@@ -27,7 +27,7 @@ use crate::hankel::HankelTransform;
 
 pub fn qdht<D>(
     r: Array1<f64>,
-    f: Array<f64, D>,
+    f: &Array<f64, D>,
     order: i32,
     axis: Axis,
 ) -> (Array1<f64>, Array<f64, D>)
@@ -36,7 +36,7 @@ where
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
 {
     let transformer = HankelTransform::new_from_r_grid(order, r);
-    let f_transform = transformer.to_transform_r_nd(&f, axis).unwrap();
+    let f_transform = transformer.to_transform_r_nd(f, axis).unwrap();
     let ht = transformer.qdht(&f_transform, axis);
     (transformer.into_kr(), ht)
 }
@@ -66,7 +66,7 @@ where
 
 pub fn iqdht<D>(
     k: Array1<f64>,
-    f: Array<f64, D>,
+    f: &Array<f64, D>,
     order: i32,
     axis: Axis,
 ) -> (Array1<f64>, Array<f64, D>)
@@ -75,7 +75,7 @@ where
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
 {
     let transformer = HankelTransform::new_from_k_grid(order, k);
-    let f_transform = transformer.to_transform_k_nd(&f, axis).unwrap();
+    let f_transform = transformer.to_transform_k_nd(f, axis).unwrap();
     let ht = transformer.iqdht(&f_transform, axis);
     (transformer.into_radius(), ht)
 }
