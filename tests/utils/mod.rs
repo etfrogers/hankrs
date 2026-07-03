@@ -62,6 +62,7 @@ impl RelativeEq for _Array1Comp {
     }
 }
 
+#[allow(dead_code)]
 pub fn assert_relative_eq_with_end_points(
     expected: &Array1<f64>,
     actual: &Array1<f64>,
