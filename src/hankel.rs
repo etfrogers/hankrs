@@ -455,9 +455,6 @@ impl HankelTransform {
             transformed *= scale_factor_output;
             transform_line.assign(&transformed);
         }
-        // unsafe {
-        //     transform.assume_init();
-        // }
         transform
     }
 

@@ -133,31 +133,17 @@ pub(crate) fn assert_arrays_equal<'a>(
 // ----------------
 pub fn generalised_top_hat(r: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
     r.mapv(|r| generalised_top_hat_f(r, a, p))
-    // f := utils.ApplyVec(func(val f64) f64 { return generalisedTopHatF(val, a, p) }, nil, r)
-    // return f
 }
 
 fn generalised_top_hat_f(r: f64, a: f64, p: i32) -> f64 {
-    // var val f64
-    if r <= a {
-        r.powi(p) //math.Pow(r, f64(p))
-    } else {
-        0.0
-    }
-    // othwerise 0
-
-    // return val
+    if r <= a { r.powi(p) } else { 0.0 }
 }
 
 pub fn generalised_jinc(v: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
     v.mapv(|v| generalised_jinc_f(v, a, p))
-
-    // f := utils.ApplyVec(func(val f64) f64 { return generalisedJincF(val, a, p) }, nil, v)
-    // return f
 }
 
 fn generalised_jinc_f(v: f64, a: f64, p: i32) -> f64 {
-    // var val f64
     if v == 0. {
         match p {
             -1 => INFINITY,
