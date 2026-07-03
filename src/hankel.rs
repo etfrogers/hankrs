@@ -114,10 +114,24 @@ impl RelativeEq for HankelTransform {
 }
 
 impl HankelTransform {
+    /// Create a new `HankelTransform` by explicitly specifying the maximum radius and number of points.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order $p$.
+    /// * `max_radius` - Radial extent of the transform $r_{max}$.
+    /// * `n_points` - Number of sample points $N$.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
         Self::build(n_points, Some(max_radius), order, None, None)
     }
 
+    /// Create a new `HankelTransform` from an existing radial grid.
+    ///
+    /// This uses the length of the grid as the number of points, and the maximum value
+    /// of the grid as the maximum radius.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order $p$.
+    /// * `radial_grid` - The radial grid that will be used to sample input functions.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
         Self::build(
             radial_grid.len(),
@@ -128,6 +142,14 @@ impl HankelTransform {
         )
     }
 
+    /// Create a new `HankelTransform` from an existing $k$-space grid.
+    ///
+    /// This uses the length of the grid as the number of points. The maximum radius
+    /// is determined dynamically from the maximum value of the $k$-grid.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order $p$.
+    /// * `k_grid` - The $k$-space grid that will be used to sample input functions.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
         Self::build(k_grid.len(), None, order, None, Some(k_grid))
     }
@@ -191,14 +213,17 @@ impl HankelTransform {
         }
     }
 
+    /// Returns the order $p$ of the transform.
     pub fn order(&self) -> i32 {
         self.order
     }
 
+    /// Returns the maximum radius $r_{max}$ of the transform.
     pub fn max_radius(&self) -> f64 {
         self.max_radius
     }
 
+    /// Returns the number of sample points $N$.
     pub fn n_points(self) -> usize {
         self.n_points
     }
@@ -243,6 +268,17 @@ impl HankelTransform {
         self.to_transform_r_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_transform_r`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the original radial
+    /// grid points, onto the grid required for use in the QDHT algorithm along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the radial dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function suitable for passing to [`HankelTransform::qdht`].
     pub fn to_transform_r_nd<D: Dimension + RemoveAxis>(
         &self,
         function: &Array<f64, D>,
@@ -280,6 +316,17 @@ impl HankelTransform {
         self.to_original_r_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_original_r`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the Hankel transform points,
+    /// back onto the original radial grid used to construct the object along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the radial dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
     pub fn to_original_r_nd<D>(
         &self,
         function: &Array<f64, D>,
@@ -320,6 +367,17 @@ impl HankelTransform {
         self.to_transform_k_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_transform_k`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the original $k$-space
+    /// grid points, onto the grid required for use in the IQDHT algorithm along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the frequency dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function suitable for passing to [`HankelTransform::iqdht`].
     pub fn to_transform_k_nd<D: Dimension + RemoveAxis>(
         &self,
         function: &Array<f64, D>,
@@ -357,6 +415,17 @@ impl HankelTransform {
         self.to_original_k_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_original_k`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the Hankel transform points,
+    /// back onto the original $k$-space grid used to construct the object along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the frequency dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
     pub fn to_original_k_nd<D: Dimension + RemoveAxis>(
         &self,
         function: &Array<f64, D>,
@@ -435,26 +504,32 @@ impl HankelTransform {
         transform
     }
 
+    /// Returns a reference to the transform matrix.
     pub fn transform_matrix(&self) -> &Array2<f64> {
         &self.t
     }
 
+    /// Returns a reference to the radial coordinate vector $r$.
     pub fn radius(&self) -> &Array1<f64> {
         &self.r
     }
 
+    /// Returns a reference to the frequency coordinate vector $v$.
     pub fn frequency(&self) -> &Array1<f64> {
         &self.v
     }
 
+    /// Returns a reference to the radial wave number coordinate vector $kr$.
     pub fn kr(&self) -> &Array1<f64> {
         &self.kr
     }
 
+    /// Consumes the transform and returns the radial coordinate vector $r$.
     pub(crate) fn into_radius(self) -> Array1<f64> {
         self.r
     }
 
+    /// Consumes the transform and returns the radial wave number coordinate vector $kr$.
     pub(crate) fn into_kr(self) -> Array1<f64> {
         self.kr
     }
