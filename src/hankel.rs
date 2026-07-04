@@ -48,6 +48,10 @@ pub struct HankelTransform {
     n_points: usize,
     /// Radial extent of transform $r_{max}$
     max_radius: f64,
+    /// Frequency extent of transform
+    max_v: f64,
+    /// wavenumber extent of transform
+    max_kr: f64,
     /// Original radial grid on which sample points were provided
     original_radial_grid: Option<Array1<f64>>,
     /// Original $k$-space grid on which sample points were provided
@@ -181,7 +185,8 @@ impl HankelTransform {
         let r = alpha.clone() * max_radius / alpha_n1;
         let v = alpha.clone() / (2.0 * PI * max_radius);
         let kr = 2.0 * PI * v.clone();
-        let v_max = alpha_n1 / (2.0 * PI * max_radius);
+        let max_v = alpha_n1 / (2.0 * PI * max_radius);
+        let max_kr = 2.0 * PI * max_v;
         let s = alpha_n1;
 
         // Calculate hankel matrix and vectors
@@ -196,12 +201,14 @@ impl HankelTransform {
 
         let t: Array2<_> = 2.0 * jp / (jp1_row.dot(&jp1_col) * s);
         let jr: Array1<_> = jp1.clone() / max_radius;
-        let jv: Array1<_> = jp1 / v_max;
+        let jv: Array1<_> = jp1 / max_v;
 
         Self {
             order,
             n_points,
             max_radius,
+            max_v,
+            max_kr,
             original_radial_grid,
             original_k_grid,
             r,
@@ -221,6 +228,16 @@ impl HankelTransform {
     /// Returns the maximum radius $r_{max}$ of the transform.
     pub fn max_radius(&self) -> f64 {
         self.max_radius
+    }
+
+    /// Returns the maximum radius $r_{max}$ of the transform.
+    pub fn max_kr(&self) -> f64 {
+        self.max_kr
+    }
+
+    /// Returns the maximum radius $r_{max}$ of the transform.
+    pub fn max_frequency(&self) -> f64 {
+        self.max_v
     }
 
     /// Returns the number of sample points $N$.
