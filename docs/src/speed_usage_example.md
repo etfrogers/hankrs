@@ -17,3 +17,8 @@ If we compile and run this in `release` mode via `cargo run --release --example 
 <!-- cmdrun cargo run --release --example speed_usage_example -->
 
 The struct-based approach completes in a fraction of a second, yielding roughly a **~50x speedup** just by holding onto the `HankelTransform` struct. When performing multiple identical QDHT operations, it is significantly faster to maintain and reuse `HankelTransform` objects.
+
+To verify they output exactly the same data, we can plot the resulting beam propagation for both approaches:
+
+![Single Shot Output](images/speed_usage_single_shot.png)
+![Object Output](images/speed_usage_object.png)

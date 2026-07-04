@@ -12,9 +12,14 @@ Here is the source code:
 {{#include ../../examples/usage_example.rs}}
 ```
 
-**Radial Field Intensity as a Function of Propagation:**
+**Initial Electric Field Distribution:**
 
 <!-- cmdrun cargo run --example usage_example -->
+![Initial Field](images/usage_example_initial_field.png)
+
+![K Vector](images/usage_example_k_vector.png)
+
+**Radial Field Intensity as a Function of Propagation:**
 ![Field Intensity](images/usage_example_irz.png)
 
 Because the intensity drops as the beam expands, it might be difficult to clearly see the beam growing in \\(r\\). To show that better, let's plot the intensity normalised such that the peak intensity at each \\(z\\) coordinate is identical.
@@ -22,3 +27,9 @@ Because the intensity drops as the beam expands, it might be difficult to clearl
 **Normalised Radial Field Intensity:**
 
 ![Normalised Field Intensity](images/usage_example_irz_norm.png)
+
+**Vectorised Approach Match:**
+
+We can also verify that propagating it using the vectorised array matches the loop exactly.
+
+![Vectorised Intensity](images/usage_example_irz_vec.png)

@@ -29,6 +29,11 @@ fn generalised_jinc(v: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Gaussian function
+    // First we try a Gaussian function, the Hankel transform of which should also be Gaussian.
+    //
+    // Note the definition in Guizar-Sicairos varies from that used by
+    // Pissens by a factor of 2\pi in both scaling of the argument (so we use 
+    // HankelTransform.kr rather than HankelTransform.v) and also scaling of the magnitude.
     let a = 3.0;
     let radius = Array1::linspace(0.0, 3.0, 1024);
     let f = radius.mapv(|r: f64| (-a * a * r * r).exp());
@@ -61,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // 2. Inverse Gaussian function
+    // Now we repeat for the inverse transform
     let kr2 = Array1::linspace(0.0, 50.0, 1024);
     let ht = kr2.mapv(|k: f64| 2.0 * PI * (1.0 / (2.0 * a * a)) * (-k * k / (4.0 * a * a)).exp());
     let (r, actual_f) = iqdht(kr2.clone(), &ht, 0, Axis(0));
@@ -91,11 +97,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // 3. Generalised jinc and top-hat
+    // Next we define functions to calculate the generalised top-hat and jinc
+    // functions, as defined by Guizar-Sicairos and Guitierrez-Vega.
+    //
+    // Note that for p=0 these become a standard top-hat and
+    // jinc(r) = J_1(r)/r functions.
     let ylims3 = [
         (-0.2..0.8, -0.1..1.1),
         (-0.05..0.15, -0.1..0.6),
         (-0.003..0.007, -0.01..0.07),
     ];
+    // For demonstration, we choose a = 0.5 and run the code for
+    // orders 0, 1 and 4 plotting and checking the mean absolute error each time.
+    // First check that the Hankel transform of the generalised jinc is calculated
+    // correctly.
     let a_val = 0.5;
     let r3 = Array1::linspace(0.0, 30.0, 1024);
     for (i, &order) in [0, 1, 4].iter().enumerate() {
@@ -132,6 +147,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 4. Generalised top-hat to jinc
+    // Now we repeat but the other way round: the Hankel transform of the top-hat
+    // function should be the jinc function.
     let r4 = Array1::linspace(0.0, 2.0, 1024);
     let ylims4 = [
         (-0.05..1.05, -0.2..0.8),
@@ -175,6 +192,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 5. 1/(r^2 + a^2)
+    // Now we investigate the function f(r) = 1/(r^2 + a^2),
+    // the Hankel transform of which is K_0(av).
+    //
+    // Note again the scaling factor of 2\pi.
     let a5 = 1.0;
     let transformer = HankelTransform::new(0, 50.0, 1024);
     let f5 = transformer.radius().mapv(|r| 1.0 / (r * r + a5 * a5));
