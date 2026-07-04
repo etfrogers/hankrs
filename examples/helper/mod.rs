@@ -89,11 +89,84 @@ pub fn plot_1d_compare(
     ))?
     .label(label2)
     .legend(|(x, y)| Cross::new((x, y), 3, &RED));
-    
+
     chart.configure_series_labels().background_style(&WHITE.mix(0.8)).border_style(&BLACK).draw()?;
     root.present()?;
     Ok(())
 }
+
+pub fn plot_1d_original_and_transform(
+    filename: &str,
+    x_orig: &Array1<f64>,
+    y_orig: &Array1<f64>,
+    title_orig: &str,
+    xlabel_orig: &str,
+    ylabel_orig: &str,
+    x_range_orig: std::ops::Range<f64>,
+    y_range_orig: std::ops::Range<f64>,
+    x1_trans: &Array1<f64>,
+    y1_trans: &Array1<f64>,
+    x2_trans: &Array1<f64>,
+    y2_trans: &Array1<f64>,
+    label1: &str,
+    label2: &str,
+    title_trans: &str,
+    xlabel_trans: &str,
+    ylabel_trans: &str,
+    x_range_trans: std::ops::Range<f64>,
+    y_range_trans: std::ops::Range<f64>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = get_image_path(filename);
+    let root = BitMapBackend::new(&path, (800, 600)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let (upper, lower) = root.split_vertically(300);
+
+    let mut chart_orig = ChartBuilder::on(&upper)
+        .caption(title_orig, ("sans-serif", 30))
+        .margin(15)
+        .x_label_area_size(40)
+        .y_label_area_size(40)
+        .build_cartesian_2d(x_range_orig, y_range_orig)?;
+
+    chart_orig.configure_mesh().x_desc(xlabel_orig).y_desc(ylabel_orig).draw()?;
+
+    let p_orig: Vec<(f64, f64)> = x_orig.into_iter().zip(y_orig.into_iter()).map(|(a, b)| (*a, *b)).collect();
+    chart_orig.draw_series(LineSeries::new(p_orig, &BLUE))?;
+
+    let mut chart_trans = ChartBuilder::on(&lower)
+        .caption(title_trans, ("sans-serif", 30))
+        .margin(15)
+        .x_label_area_size(40)
+        .y_label_area_size(40)
+        .build_cartesian_2d(x_range_trans, y_range_trans)?;
+
+    chart_trans.configure_mesh().x_desc(xlabel_trans).y_desc(ylabel_trans).draw()?;
+
+    let p1: Vec<(f64, f64)> = x1_trans.into_iter().zip(y1_trans.into_iter()).map(|(a, b)| (*a, *b)).collect();
+    chart_trans.draw_series(LineSeries::new(p1, &BLUE))?
+        .label(label1)
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+
+    let p2: Vec<(f64, f64)> = x2_trans.into_iter().zip(y2_trans.into_iter()).map(|(a, b)| (*a, *b)).collect();
+    chart_trans.draw_series(PointSeries::of_element(
+        p2,
+        3,
+        &RED,
+        &|c, s, st| {
+            return EmptyElement::at(c)
+                + Cross::new((0, 0), s, st.filled());
+        },
+    ))?
+    .label(label2)
+    .legend(|(x, y)| Cross::new((x, y), 3, &RED));
+
+    chart_trans.configure_series_labels().background_style(&WHITE.mix(0.8)).border_style(&BLACK).draw()?;
+
+    root.present()?;
+    Ok(())
+}
+
 
 pub fn imagesc(
     filename: &str,
@@ -107,7 +180,7 @@ pub fn imagesc(
     let path = get_image_path(filename);
     let root = BitMapBackend::new(&path, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
-    
+
     let x_min = *x.first().unwrap_or(&0.0);
     let x_max = *x.last().unwrap_or(&1.0);
     let y_min = *y.first().unwrap_or(&0.0);
@@ -138,11 +211,11 @@ pub fn imagesc(
                 // python example: z = Irz, dimensions: z.shape == (nr, Nz), so (y, x).
                 let val = z[[j, i]];
                 let norm = if z_range == 0.0 { 0.0 } else { (val - z_min) / z_range };
-                
+
                 // HSL interpolation for heatmap (blue -> red)
                 let hue = (1.0 - norm) * 240.0; // 240 is blue, 0 is red
                 let color = HSLColor(hue / 360.0, 1.0, 0.5);
-                
+
                 Rectangle::new(
                     [(xi, yi), (xi + dx, yi + dy)],
                     color.filled(),
