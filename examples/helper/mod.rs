@@ -40,15 +40,16 @@ pub fn plot_1d(
 
     let points: Vec<(f64, f64)> = x.into_iter().zip(y.into_iter()).map(|(a, b)| (*a, *b)).collect();
     chart.draw_series(LineSeries::new(points, &BLUE))?;
-    
+
     root.present()?;
     Ok(())
 }
 
 pub fn plot_1d_compare(
     filename: &str,
-    x: &Array1<f64>,
+    x1: &Array1<f64>,
     y1: &Array1<f64>,
+    x2: &Array1<f64>,
     y2: &Array1<f64>,
     label1: &str,
     label2: &str,
@@ -71,12 +72,12 @@ pub fn plot_1d_compare(
 
     chart.configure_mesh().x_desc(xlabel).y_desc(ylabel).draw()?;
 
-    let p1: Vec<(f64, f64)> = x.into_iter().zip(y1.into_iter()).map(|(a, b)| (*a, *b)).collect();
+    let p1: Vec<(f64, f64)> = x1.into_iter().zip(y1.into_iter()).map(|(a, b)| (*a, *b)).collect();
     chart.draw_series(LineSeries::new(p1, &BLUE))?
         .label(label1)
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
 
-    let p2: Vec<(f64, f64)> = x.into_iter().zip(y2.into_iter()).map(|(a, b)| (*a, *b)).collect();
+    let p2: Vec<(f64, f64)> = x2.into_iter().zip(y2.into_iter()).map(|(a, b)| (*a, *b)).collect();
     chart.draw_series(PointSeries::of_element(
         p2,
         3,
