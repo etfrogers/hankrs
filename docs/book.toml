@@ -9,3 +9,6 @@ build-dir = "book"
 create-missing = false
 
 [preprocessor.cmdrun]
+
+[output.html]
+mathjax-support = true

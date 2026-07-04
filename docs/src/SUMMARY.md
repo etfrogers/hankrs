@@ -1,4 +1,5 @@
 # Summary
 
 - [Introduction](index.md)
-- [Gallery](gallery.md)
+- [Simple Example](simple_example.md)
+- [One-Shot Example](one_shot_example.md)
