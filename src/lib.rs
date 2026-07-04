@@ -11,4 +11,4 @@ mod hankel;
 pub mod one_shot;
 
 /// The primary struct used for computing Hankel transforms.
-pub use crate::hankel::HankelTransform;
+pub use crate::hankel::{HankelTransform, HankelScalar};

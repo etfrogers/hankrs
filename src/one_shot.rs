@@ -1,6 +1,6 @@
 use ndarray::{Array, Array1, Axis, Dim, DimAdd, Dimension, RemoveAxis};
 
-use crate::hankel::HankelTransform;
+use crate::hankel::{HankelScalar, HankelTransform};
 
 /// Perform a quasi-discrete Hankel transform of the function `f` (sampled at points
 /// `r`) and return the transformed function and its sample points in $k$-space.
@@ -23,13 +23,12 @@ use crate::hankel::HankelTransform;
 ///
 /// # Returns
 /// A tuple containing the $k$ coordinates of the transformed function and its values.
-
-pub fn qdht<D>(
+pub fn qdht<T: HankelScalar, D>(
     r: Array1<f64>,
-    f: &Array<f64, D>,
+    f: &Array<T, D>,
     order: i32,
     axis: Axis,
-) -> (Array1<f64>, Array<f64, D>)
+) -> (Array1<f64>, Array<T, D>)
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
@@ -61,13 +60,12 @@ where
 ///
 /// # Returns
 /// A tuple containing the radial coordinates of the transformed function and its values.
-
-pub fn iqdht<D>(
+pub fn iqdht<T: HankelScalar, D>(
     k: Array1<f64>,
-    f: &Array<f64, D>,
+    f: &Array<T, D>,
     order: i32,
     axis: Axis,
-) -> (Array1<f64>, Array<f64, D>)
+) -> (Array1<f64>, Array<T, D>)
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,

@@ -6,6 +6,94 @@ use std::{f64::consts::PI, fmt::Debug};
 
 use amos_bessel_rs::bessel_j;
 use bessel_zeros::{BesselFunType, bessel_zeros};
+use ndarray::ArrayView1;
+use num::Zero;
+use num_complex::Complex;
+
+/// A trait for scalar types that can be processed by the Hankel transform.
+/// It abstracts over basic array arithmetic and matrix multiplications.
+pub trait HankelScalar: Clone + Zero {
+    /// Multiplies a purely real transform matrix with a vector of this scalar type.
+    fn dot_real_matrix(matrix: &Array2<f64>, vector: &ArrayView1<Self>) -> Array1<Self>;
+
+    /// Divides a vector of this scalar type by a purely real vector.
+    fn div_real_array(vector: &ArrayView1<Self>, scale: &Array1<f64>) -> Array1<Self>;
+
+    /// Multiplies a mutable vector of this scalar type in-place by a purely real vector.
+    fn mul_real_array_assign(vector: &mut Array1<Self>, scale: &Array1<f64>);
+
+    /// Interpolates the array along the specified axis using a cubic spline.
+    fn spline<D>(
+        x0: &Array1<f64>,
+        y0: &Array<Self, D>,
+        x: &Array1<f64>,
+        axis: Axis,
+    ) -> Array<Self, D>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>;
+}
+
+impl HankelScalar for f64 {
+    fn dot_real_matrix(matrix: &Array2<f64>, vector: &ArrayView1<f64>) -> Array1<f64> {
+        matrix.dot(vector)
+    }
+    fn div_real_array(vector: &ArrayView1<f64>, scale: &Array1<f64>) -> Array1<f64> {
+        vector.to_owned() / scale
+    }
+    fn mul_real_array_assign(vector: &mut Array1<f64>, scale: &Array1<f64>) {
+        *vector *= scale;
+    }
+    fn spline<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
+        spline_f64(x0, y0, x, axis)
+    }
+}
+
+impl HankelScalar for Complex<f64> {
+    fn dot_real_matrix(
+        matrix: &Array2<f64>,
+        vector: &ArrayView1<Complex<f64>>,
+    ) -> Array1<Complex<f64>> {
+        let real_part = matrix.dot(&vector.mapv(|c| c.re));
+        let imag_part = matrix.dot(&vector.mapv(|c| c.im));
+        ndarray::Zip::from(&real_part)
+            .and(&imag_part)
+            .map_collect(|&r, &i| Complex::new(r, i))
+    }
+    fn div_real_array(
+        vector: &ArrayView1<Complex<f64>>,
+        scale: &Array1<f64>,
+    ) -> Array1<Complex<f64>> {
+        ndarray::Zip::from(vector)
+            .and(scale)
+            .map_collect(|&v, &s| v / s)
+    }
+    fn mul_real_array_assign(vector: &mut Array1<Complex<f64>>, scale: &Array1<f64>) {
+        ndarray::Zip::from(vector)
+            .and(scale)
+            .for_each(|v, &s| *v *= s);
+    }
+    fn spline<D>(
+        x0: &Array1<f64>,
+        y0: &Array<Complex<f64>, D>,
+        x: &Array1<f64>,
+        axis: Axis,
+    ) -> Array<Complex<f64>, D>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
+        let real_part = spline_f64(x0, &y0.mapv(|c| c.re), x, axis);
+        let imag_part = spline_f64(x0, &y0.mapv(|c| c.im), x, axis);
+        ndarray::Zip::from(&real_part)
+            .and(&imag_part)
+            .map_collect(|&r, &i| Complex::new(r, i))
+    }
+}
 
 /// The main struct for performing Hankel Transforms
 ///
@@ -280,8 +368,7 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::qdht`] (sampled at `self.r`).
-
-    pub fn to_transform_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_transform_r<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_transform_r_nd(function, Axis(0))
     }
 
@@ -296,16 +383,16 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::qdht`].
-    pub fn to_transform_r_nd<D: Dimension + RemoveAxis>(
+    pub fn to_transform_r_nd<T: HankelScalar, D: Dimension + RemoveAxis>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(r_grid) = self.original_radial_grid() {
-            Ok(spline(r_grid, function, &self.r, axis))
+            Ok(T::spline(r_grid, function, &self.r, axis))
         } else {
             Err(
                 "Attempted to interpolate onto transform radial grid on HankelTransform \
@@ -329,7 +416,7 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
-    pub fn to_original_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_original_r<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_original_r_nd(function, Axis(0))
     }
 
@@ -344,17 +431,17 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
-    pub fn to_original_r_nd<D>(
+    pub fn to_original_r_nd<T: HankelScalar, D>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         D: Dimension + RemoveAxis,
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(r_grid) = self.original_radial_grid() {
-            Ok(spline(&self.r, function, r_grid, axis))
+            Ok(T::spline(&self.r, function, r_grid, axis))
         } else {
             Err(
                 "Attempted to interpolate onto original_radial_grid on HankelTransform \
@@ -380,7 +467,7 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::qdht`] (sampled at `self.kr`).
-    pub fn to_transform_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_transform_k<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_transform_k_nd(function, Axis(0))
     }
 
@@ -395,16 +482,16 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::iqdht`].
-    pub fn to_transform_k_nd<D: Dimension + RemoveAxis>(
+    pub fn to_transform_k_nd<T: HankelScalar, D: Dimension + RemoveAxis>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(k_grid) = self.original_k_grid() {
-            Ok(spline(k_grid, function, &self.kr, axis))
+            Ok(T::spline(k_grid, function, &self.kr, axis))
         } else {
             Err(
                 "Attempted to interpolate onto transform k grid on HankelTransform \
@@ -428,7 +515,7 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
-    pub fn to_original_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_original_k<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_original_k_nd(function, Axis(0))
     }
 
@@ -443,16 +530,16 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
-    pub fn to_original_k_nd<D: Dimension + RemoveAxis>(
+    pub fn to_original_k_nd<T: HankelScalar, D: Dimension + RemoveAxis>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(k_grid) = self.original_k_grid() {
-            Ok(spline(&self.kr, function, k_grid, axis))
+            Ok(T::spline(&self.kr, function, k_grid, axis))
         } else {
             Err(
                 "Attempted to interpolate onto original_k_grid on HankelTransform \
@@ -478,7 +565,11 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Function in frequency space (sampled at `self.v`).
-    pub fn qdht<D: Dimension + RemoveAxis>(&self, fr: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
+    pub fn qdht<T: HankelScalar, D: Dimension + RemoveAxis>(
+        &self,
+        fr: &Array<T, D>,
+        axis: Axis,
+    ) -> Array<T, D> {
         let scale_factor_input = &self.jr;
         let scale_factor_output = &self.jv;
         self.transform_by_lines(fr, axis, scale_factor_input, scale_factor_output)
@@ -497,25 +588,29 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Radial function (sampled at `self.r`) = IHT(fv).
-    pub fn iqdht<D: Dimension>(&self, fv: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
+    pub fn iqdht<T: HankelScalar, D: Dimension>(
+        &self,
+        fv: &Array<T, D>,
+        axis: Axis,
+    ) -> Array<T, D> {
         self.transform_by_lines(fv, axis, &self.jv, &self.jr)
     }
 
-    fn transform_by_lines<D: Dimension>(
+    fn transform_by_lines<T: HankelScalar, D: Dimension>(
         &self,
-        f: &Array<f64, D>,
+        f: &Array<T, D>,
         axis: Axis,
         scale_factor_input: &Array1<f64>,
         scale_factor_output: &Array1<f64>,
-    ) -> Array<f64, D> {
+    ) -> Array<T, D> {
         let mut transform = Array::zeros(f.dim());
 
         for (mut transform_line, fr_line) in
             transform.lanes_mut(axis).into_iter().zip(f.lanes(axis))
         {
-            let scaled_line = fr_line.to_owned() / scale_factor_input;
-            let mut transformed = self.t.dot(&scaled_line);
-            transformed *= scale_factor_output;
+            let scaled_line = T::div_real_array(&fr_line, scale_factor_input);
+            let mut transformed = T::dot_real_matrix(&self.t, &scaled_line.view());
+            T::mul_real_array_assign(&mut transformed, scale_factor_output);
             transform_line.assign(&transformed);
         }
         transform
@@ -569,7 +664,7 @@ pub fn perms<D: Dimension>(axis: Axis) -> (D, D) {
     (forward_d, backward_d)
 }
 
-fn spline<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
+fn spline_f64<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
