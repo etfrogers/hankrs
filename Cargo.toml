@@ -16,7 +16,8 @@ rand = "0.9.2"
 # complex-bessel-rs = "1.2.1"
 # GSL = "7.0.0"
 # amos-bessel-rs = { git = "https://github.com/etfrogers/bessel-rs.git/", branch = "main" }
-amos-bessel-rs = { path = "../bessel-rs/amos-bessel-rs" }
+amos-bessel-rs = "0.3.0"
+bessel-zeros = "0.1.1"
 num = "0.4.3"
 rstest_reuse = "0.7.0"
 

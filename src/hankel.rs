@@ -4,7 +4,8 @@ use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
 use std::{f64::consts::PI, fmt::Debug};
 
-use amos_bessel_rs::{BesselFunType, bessel_j, bessel_zeros};
+use amos_bessel_rs::bessel_j;
+use bessel_zeros::{BesselFunType, bessel_zeros};
 
 // The main class for performing Hankel Transforms
 //
