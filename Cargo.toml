@@ -2,6 +2,10 @@
 name = "hankrs"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "An implementation of quasi-discrete hankel tranforms in rust"
+repository = "https://github.com/etfrogers/hankrs"
+keywords = ["hankel-tranforms", "quasi-discrete"]
 
 [dependencies]
 ndarray = { version = "0.16", features = ["approx"] }

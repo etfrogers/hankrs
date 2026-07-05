@@ -7,76 +7,62 @@ use std::{f64::consts::PI, fmt::Debug};
 use amos_bessel_rs::bessel_j;
 use bessel_zeros::{BesselFunType, bessel_zeros};
 
-// The main class for performing Hankel Transforms
-//
-// For the QDHT to work, the function must be sampled a specific points, which this class generates
-// and stores in :attr:`HankelTransform.r`. Any transform on this grid will be sampled at points
-// :attr:`.HankelTransform.v` (frequency space) or equivalently :attr:`.HankelTransform.kr`
-// (angular frequency or wavenumber space).
-
-// The constructor has one required argument (``order``). The remaining four arguments offer
-// three different ways of specifying the radial (and therefore implicitly the frequency) points:
-
-// 1. Supply both a maximum radius ``r_max`` and number of transform points ``n_points``
-// 2. Supply the original (often equally spaced) ``radial_grid`` on which you have currently
-//     have sample points. This approach allows easy conversion from the original grid using
-//     :meth:`.HankelTransform.to_transform_r()`. ``t = HankelTransform(order, radial_grid=r)``
-//     is effectively equivalent to ``t = HankelTransform(order, n_points=r.size, r_max=np.max(r))``
-//     except for the fact the the original radial grid is stored in the :class:`.HankelTransform`
-//     object for use in :meth:`~.HankelTransform.to_transform_r` and
-//     :meth:`~.HankelTransform.to_original_r`.
-// 3. Supply the original (often equally spaced) :math:`k`-space grid on which you
-//     have currently have sample points. This is most use if you intend to do inverse
-//     transforms. It allows easy conversion to and from the original grid using
-//     :meth:`~.HankelTransform.to_original_k()` and :meth:`~.HankelTransform.to_transform_k()`.
-//     As in option 2, :attr:`.HankelTransform.n_points` is determined by ``k_grid.size``.
-//     :attr:`HankelTransform.r_max` is determined in a more complex way from ``np.max(k_grid)``.
-
-// :parameter order: Transform order :math:`p`
-// :type order: :class:`int`
-// :parameter max_radius: (Optional) Radial extent of transform :math:`r_\textrm{max}`
-// :type max_radius: :class:`float`
-// :parameter n_points: (Optional) Number of sample points :math:`N`
-// :type n_points: :class:`int`
-// :parameter radial_grid: (Optional) The radial grid that will be used to sample input functions
-//     it is used to set `N` and :math:`r_\textrm{max}` by ``n_points = radial_grid.size`` and
-//     ``r_max = np.max(radial_grid)``
-// :type radial_grid: :class:`numpy.ndarray`
-// :parameter k_grid: (Optional) Number of sample points :math:`N`
-// :type k_grid: :class:`numpy.ndarray`
-
-// :ivar alpha: The first :math:`N` Roots of the :math:`p` th order Bessel function.
-// :ivar alpha_n1: (N+1)th root :math:`\alpha_{N1}`
-// :ivar r: Radial co-ordinate vector
-// :ivar v: frequency co-ordinate vector
-// :ivar kr: Radial wave number co-ordinate vector
-// :ivar v_max: Limiting frequency :math:`v_\textrm{max} = \alpha_{N1}/(2 \pi R)`
-// :ivar S: RV product :math:`2\pi r_\textrm{max} v_max`
-// :ivar T: Transform matrix
-// :ivar JR: Radius transform vector :math:`J_R = J_{p+1}(\alpha) / r_\textrm{max}`
-// :ivar JV: Frequency transform vector :math:`J_V = J_{p+1}(\alpha) / v_\textrm{max}`
-
-// The algorithm used is that from:
-
-//     *"Computation of quasi-discrete Hankel transforms of the integer
-//     order for propagating optical wave fields"*
-//     Manuel Guizar-Sicairos and Julio C. Guitierrez-Vega
-//     J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
-
-// The algorithm also calls the function :func:`scipy.special.jn_zeros` to calculate
-// the roots of the bessel function.
+/// The main struct for performing Hankel Transforms
+///
+/// For the QDHT to work, the function must be sampled at specific points, which this struct generates
+/// and stores in `self.r`. Any transform on this grid will be sampled at points
+/// `self.v` (frequency space) or equivalently `self.kr`
+/// (angular frequency or wavenumber space).
+///
+/// The constructor has one required argument (`order`). The remaining arguments offer
+/// three different ways of specifying the radial (and therefore implicitly the frequency) points:
+///
+/// 1. Supply both a maximum radius `max_radius` and number of transform points `n_points`
+/// 2. Supply the original (often equally spaced) `radial_grid` on which you currently
+///    have sample points. This approach allows easy conversion from the original grid using
+///    [`HankelTransform::to_transform_r`]. `t = HankelTransform::new_from_r_grid(order, r)`
+///    is effectively equivalent to `t = HankelTransform::new(order, max_radius, n_points)`
+///    except for the fact that the original radial grid is stored in the [`HankelTransform`]
+///    object for use in [`HankelTransform::to_transform_r`] and
+///    [`HankelTransform::to_original_r`].
+/// 3. Supply the original (often equally spaced) $k$-space grid on which you
+///    currently have sample points. This is most useful if you intend to do inverse
+///    transforms. It allows easy conversion to and from the original grid using
+///    [`HankelTransform::to_original_k`] and [`HankelTransform::to_transform_k`].
+///    As in option 2, `n_points` is determined by `k_grid.len()`.
+///    `max_radius` is determined in a more complex way from the maximum of `k_grid`.
+///
+/// The algorithm used is that from:
+///
+/// > *"Computation of quasi-discrete Hankel transforms of the integer
+/// > order for propagating optical wave fields"*
+/// > Manuel Guizar-Sicairos and Julio C. Guitierrez-Vega
+/// > J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
+///
+/// The algorithm also uses root finding to calculate the roots of the bessel function.
 #[derive(PartialEq)]
 pub struct HankelTransform {
+    /// Transform order $p$
     order: i32,
+    /// Number of sample points $N$
     n_points: usize,
+    /// Radial extent of transform $r_{max}$
     max_radius: f64,
+    /// Original radial grid on which sample points were provided
     original_radial_grid: Option<Array1<f64>>,
+    /// Original $k$-space grid on which sample points were provided
     original_k_grid: Option<Array1<f64>>,
+    /// Radial co-ordinate vector
     r: Array1<f64>,
+    /// Radial wave number co-ordinate vector
     kr: Array1<f64>,
+    /// Frequency co-ordinate vector
     v: Array1<f64>,
+    /// Transform matrix
     t: Array2<f64>,
+    /// Frequency transform vector $J_V = J_{p+1}(\alpha) / v_{max}$
     jv: Array1<f64>,
+    /// Radius transform vector $J_R = J_{p+1}(\alpha) / r_{max}$
     jr: Array1<f64>,
 }
 
@@ -128,10 +114,24 @@ impl RelativeEq for HankelTransform {
 }
 
 impl HankelTransform {
+    /// Create a new `HankelTransform` by explicitly specifying the maximum radius and number of points.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order $p$.
+    /// * `max_radius` - Radial extent of the transform $r_{max}$.
+    /// * `n_points` - Number of sample points $N$.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
         Self::build(n_points, Some(max_radius), order, None, None)
     }
 
+    /// Create a new `HankelTransform` from an existing radial grid.
+    ///
+    /// This uses the length of the grid as the number of points, and the maximum value
+    /// of the grid as the maximum radius.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order $p$.
+    /// * `radial_grid` - The radial grid that will be used to sample input functions.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
         Self::build(
             radial_grid.len(),
@@ -142,6 +142,14 @@ impl HankelTransform {
         )
     }
 
+    /// Create a new `HankelTransform` from an existing $k$-space grid.
+    ///
+    /// This uses the length of the grid as the number of points. The maximum radius
+    /// is determined dynamically from the maximum value of the $k$-grid.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order $p$.
+    /// * `k_grid` - The $k$-space grid that will be used to sample input functions.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
         Self::build(k_grid.len(), None, order, None, Some(k_grid))
     }
@@ -205,58 +213,72 @@ impl HankelTransform {
         }
     }
 
+    /// Returns the order $p$ of the transform.
     pub fn order(&self) -> i32 {
         self.order
     }
 
+    /// Returns the maximum radius $r_{max}$ of the transform.
     pub fn max_radius(&self) -> f64 {
         self.max_radius
     }
 
+    /// Returns the number of sample points $N$.
     pub fn n_points(self) -> usize {
         self.n_points
     }
 
-    /// Return the original radial grid used to construct the object, or raise a :class:`ValueError`
-    /// if the constructor was not called specifying a ``radial_grid`` parameter.
+    /// Return the original radial grid used to construct the object, or `None`
+    /// if the constructor was not called specifying a `radial_grid` parameter.
     ///
-    /// :return: The original radial grid used to construct the object.
-    /// :rtype: :class:`numpy.ndarray`
+    /// # Returns
+    /// An `Option` containing the original radial grid used to construct the object.
     pub fn original_radial_grid(&self) -> Option<&Array1<f64>> {
         self.original_radial_grid.as_ref()
     }
 
-    /// Return the original k grid used to construct the object, or raise a :class:`ValueError`
-    /// if the constructor was not called specifying a ``k_grid`` parameter.
-    /// :return: The original k grid used to construct the object.
-    /// :rtype: :class:`numpy.ndarray`
+    /// Return the original k grid used to construct the object, or `None`
+    /// if the constructor was not called specifying a `k_grid` parameter.
+    ///
+    /// # Returns
+    /// An `Option` containing the original k grid used to construct the object.
     pub fn original_k_grid(&self) -> Option<&Array1<f64>> {
         self.original_k_grid.as_ref()
     }
 
     /// Interpolate a function, assumed to have been given at the original radial
-    // grid points used to construct the ``HankelTransform`` object onto the grid required
-    // of use in the QDHT algorithm.
-
-    // If the the ``HankelTransform`` object was constructed with a (say) equally-spaced
-    // grid in radius, then it needs the function to transform to be sampled at a specific
-    // grid before it can be passed to :meth:`.HankelTransform.qdht`. This method provides
-    // a convenient way of doing this.
-
-    // :parameter function: The function to be interpolated. Specified at the radial points
-    //     :attr:`~.HankelTransform.original_radial_grid`.
-    // :type function: :class:`numpy.ndarray`
-    // :parameter axis: Axis representing the radial dependence of `function`.
-    // :type axis: :class:`int`
-
-    // :return: Interpolated function suitable to passing to
-    //     :meth:`HankelTransform.qdht` (sampled at ``self.r``)
-    // :rtype: :class:`numpy.ndarray`
+    /// grid points used to construct the [`HankelTransform`] object onto the grid required
+    /// for use in the QDHT algorithm.
+    ///
+    /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
+    /// grid in radius, then it needs the function to transform to be sampled at a specific
+    /// grid before it can be passed to [`HankelTransform::qdht`]. This method provides
+    /// a convenient way of doing this.
+    ///
+    /// # Arguments
+    /// * `function` - The function to be interpolated. Specified at the radial points
+    ///   from [`HankelTransform::original_radial_grid`].
+    /// * `axis` - Axis representing the radial dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function suitable for passing to
+    /// [`HankelTransform::qdht`] (sampled at `self.r`).
 
     pub fn to_transform_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
         self.to_transform_r_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_transform_r`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the original radial
+    /// grid points, onto the grid required for use in the QDHT algorithm along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the radial dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function suitable for passing to [`HankelTransform::qdht`].
     pub fn to_transform_r_nd<D: Dimension + RemoveAxis>(
         &self,
         function: &Array<f64, D>,
@@ -275,27 +297,36 @@ impl HankelTransform {
         }
     }
 
-    // Interpolate a function, assumed to have been given at the Hankel transform points
-    // ``self.r`` (as returned by :meth:`HankelTransform.iqdht`) back onto the original grid
-    // used to construct the ``HankelTransform`` object.
-
-    // If the the ``HankelTransform`` object was constructed with a (say) equally-spaced
-    // grid in radius, it may be useful to convert back to this grid after a IQDHT.
-    // This method provides a convenient way of doing this.
-
-    // :parameter function: The function to be interpolated. Specified at the radial points
-    //     ``self.r``.
-    // :type function: :class:`numpy.ndarray`
-    // :parameter axis: Axis representing the radial dependence of `function`.
-    // :type axis: :class:`int`
-
-    // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_radial_grid`.
-    // :rtype: :class:`numpy.ndarray`
-
+    /// Interpolate a function, assumed to have been given at the Hankel transform points
+    /// `self.r` (as returned by [`HankelTransform::iqdht`]) back onto the original grid
+    /// used to construct the [`HankelTransform`] object.
+    ///
+    /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
+    /// grid in radius, it may be useful to convert back to this grid after an IQDHT.
+    /// This method provides a convenient way of doing this.
+    ///
+    /// # Arguments
+    /// * `function` - The function to be interpolated. Specified at the radial points
+    ///   `self.r`.
+    /// * `axis` - Axis representing the radial dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
     pub fn to_original_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
         self.to_original_r_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_original_r`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the Hankel transform points,
+    /// back onto the original radial grid used to construct the object along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the radial dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
     pub fn to_original_r_nd<D>(
         &self,
         function: &Array<f64, D>,
@@ -315,28 +346,38 @@ impl HankelTransform {
         }
     }
 
-    // Interpolate a function, assumed to have been given at the original k
-    // grid points used to construct the ``HankelTransform`` object onto the grid required
-    // of use in the IQDHT algorithm.
-
-    // If the the ``HankelTransform`` object was constructed with a (say) equally-spaced
-    // grid in :math:`k`, then it needs the function to transform to be sampled at a specific
-    // grid before it can be passed to :meth:`.HankelTransform.iqdht`. This method provides
-    // a convenient way of doing this.
-
-    // :parameter function: The function to be interpolated. Specified at the k points
-    //     :attr:`~.HankelTransform.original_k_grid`.
-    // :type function: :class:`numpy.ndarray`
-    // :parameter axis: Axis representing the frequency dependence of `function`.
-    // :type axis: :class:`int`
-
-    // :return: Interpolated function suitable to passing to
-    //     :meth:`HankelTransform.qdht` (sampled at ``self.kr``)
-    // :rtype: :class:`numpy.ndarray`
+    /// Interpolate a function, assumed to have been given at the original k
+    /// grid points used to construct the [`HankelTransform`] object onto the grid required
+    /// for use in the IQDHT algorithm.
+    ///
+    /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
+    /// grid in $k$, then it needs the function to transform to be sampled at a specific
+    /// grid before it can be passed to [`HankelTransform::iqdht`]. This method provides
+    /// a convenient way of doing this.
+    ///
+    /// # Arguments
+    /// * `function` - The function to be interpolated. Specified at the k points
+    ///   from [`HankelTransform::original_k_grid`].
+    /// * `axis` - Axis representing the frequency dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function suitable for passing to
+    /// [`HankelTransform::qdht`] (sampled at `self.kr`).
     pub fn to_transform_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
         self.to_transform_k_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_transform_k`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the original $k$-space
+    /// grid points, onto the grid required for use in the IQDHT algorithm along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the frequency dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function suitable for passing to [`HankelTransform::iqdht`].
     pub fn to_transform_k_nd<D: Dimension + RemoveAxis>(
         &self,
         function: &Array<f64, D>,
@@ -356,25 +397,35 @@ impl HankelTransform {
     }
 
     /// Interpolate a function, assumed to have been given at the Hankel transform points
-    // ``self.k`` (as returned by :meth:`HankelTransform.qdht`) back onto the original grid
-    // used to construct the ``HankelTransform`` object.
-
-    // If the the ``HankelTransform`` object was constructed with a (say) equally-spaced
-    // grid in :math:`k`, it may be useful to convert back to this grid after a QDHT.
-    // This method provides a convenient way of doing this.
-
-    // :parameter function: The function to be interpolated. Specified at the radial points
-    //     ``self.k``.
-    // :type function: :class:`numpy.ndarray`
-    // :parameter axis: Axis representing the frequency dependence of `function`.
-    // :type axis: :class:`int`
-
-    // :return: Interpolated function at the points held in :attr:`~.HankelTransform.original_k_grid`.
-    // :rtype: :class:`numpy.ndarray`
+    /// `self.k` (as returned by [`HankelTransform::qdht`]) back onto the original grid
+    /// used to construct the [`HankelTransform`] object.
+    ///
+    /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
+    /// grid in $k$, it may be useful to convert back to this grid after a QDHT.
+    /// This method provides a convenient way of doing this.
+    ///
+    /// # Arguments
+    /// * `function` - The function to be interpolated. Specified at the radial points
+    ///   `self.k`.
+    /// * `axis` - Axis representing the frequency dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
     pub fn to_original_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
         self.to_original_k_nd(function, Axis(0))
     }
 
+    /// Multi-dimensional equivalent of [`HankelTransform::to_original_k`].
+    ///
+    /// Interpolates an N-dimensional function, assumed to have been given at the Hankel transform points,
+    /// back onto the original $k$-space grid used to construct the object along a specified axis.
+    ///
+    /// # Arguments
+    /// * `function` - The N-dimensional function to be interpolated.
+    /// * `axis` - Axis representing the frequency dependence of `function`.
+    ///
+    /// # Returns
+    /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
     pub fn to_original_k_nd<D: Dimension + RemoveAxis>(
         &self,
         function: &Array<f64, D>,
@@ -394,46 +445,41 @@ impl HankelTransform {
     }
 
     /// QDHT: Quasi Discrete Hankel Transform
-
-    // Performs the Hankel transform of a function of radius, returning
-    // a function of frequency.
-
-    // .. math::
-    //     f_v(v) = \mathcal{H}^{-1}\{f_r(r)\}
-
-    // .. warning:
-    //     The input function must be sampled at the points ``self.r``, and the output
-    //     will be sampled at the points ``self.v`` (or equivalently ``self.kr``)
-
-    // :parameter fr: Function in real space as a function of radius (sampled at ``self.r``)
-    // :type fr: :class:`numpy.ndarray`
-    // :parameter axis: Axis over which to compute the Hankel transform.
-    // :type axis: :class:`int`
-
-    // :return: Function in frequency space (sampled at ``self.v``)
-    // :rtype: :class:`numpy.ndarray`
-
+    ///
+    /// Performs the Hankel transform of a function of radius, returning
+    /// a function of frequency.
+    ///
+    /// $f_v(v) = \mathcal{H}^{-1}\{f_r(r)\}$
+    ///
+    /// # Warning
+    /// The input function must be sampled at the points `self.r`, and the output
+    /// will be sampled at the points `self.v` (or equivalently `self.kr`).
+    ///
+    /// # Arguments
+    /// * `fr` - Function in real space as a function of radius (sampled at `self.r`).
+    /// * `axis` - Axis over which to compute the Hankel transform.
+    ///
+    /// # Returns
+    /// Function in frequency space (sampled at `self.v`).
     pub fn qdht<D: Dimension + RemoveAxis>(&self, fr: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
         let scale_factor_input = &self.jr;
         let scale_factor_output = &self.jv;
         self.transform_by_lines(fr, axis, scale_factor_input, scale_factor_output)
     }
 
-    // IQDHT: Inverse Quasi Discrete Hankel Transform
-
-    // Performs the inverse Hankel transform of a function of frequency, returning
-    // a function of radius.
-
-    // .. math::
-    //     f_r(r) = \mathcal{H}^{-1}\{f_v(v)\}
-
-    // :parameter fv: Function in frequency space (sampled at self.v)
-    // :type fv: :class:`numpy.ndarray`
-    // :parameter axis: Axis over which to compute the Hankel transform.
-    // :type axis: :class:`int`
-
-    // :return: Radial function (sampled at self.r) = IHT(fv)
-    // :rtype: :class:`numpy.ndarray`
+    /// IQDHT: Inverse Quasi Discrete Hankel Transform
+    ///
+    /// Performs the inverse Hankel transform of a function of frequency, returning
+    /// a function of radius.
+    ///
+    /// $f_r(r) = \mathcal{H}^{-1}\{f_v(v)\}$
+    ///
+    /// # Arguments
+    /// * `fv` - Function in frequency space (sampled at `self.v`).
+    /// * `axis` - Axis over which to compute the Hankel transform.
+    ///
+    /// # Returns
+    /// Radial function (sampled at `self.r`) = IHT(fv).
     pub fn iqdht<D: Dimension>(&self, fv: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
         self.transform_by_lines(fv, axis, &self.jv, &self.jr)
     }
@@ -455,32 +501,35 @@ impl HankelTransform {
             transformed *= scale_factor_output;
             transform_line.assign(&transformed);
         }
-        // unsafe {
-        //     transform.assume_init();
-        // }
         transform
     }
 
+    /// Returns a reference to the transform matrix.
     pub fn transform_matrix(&self) -> &Array2<f64> {
         &self.t
     }
 
+    /// Returns a reference to the radial coordinate vector $r$.
     pub fn radius(&self) -> &Array1<f64> {
         &self.r
     }
 
+    /// Returns a reference to the frequency coordinate vector $v$.
     pub fn frequency(&self) -> &Array1<f64> {
         &self.v
     }
 
+    /// Returns a reference to the radial wave number coordinate vector $kr$.
     pub fn kr(&self) -> &Array1<f64> {
         &self.kr
     }
 
+    /// Consumes the transform and returns the radial coordinate vector $r$.
     pub(crate) fn into_radius(self) -> Array1<f64> {
         self.r
     }
 
+    /// Consumes the transform and returns the radial wave number coordinate vector $kr$.
     pub(crate) fn into_kr(self) -> Array1<f64> {
         self.kr
     }
