@@ -50,13 +50,15 @@ http://github.com/etfrogers/hankrs
 Documentation
 -------------
 
-The documentation for `hankrs` can be found at [docs.rs](https://docs.rs/hankrs), or you can build it locally with:
+The API documentation for `hankrs` can be found at [docs.rs](https://docs.rs/hankrs), or you can build it locally with:
 
 ```bash
 cargo doc --open
 ```
 
+Comprehensive examples and mathematical background are provided in the [online `hankrs` book](https://etfrogers.github.io/hankrs/).
+
 Usage
 -----
 
-Please refer to the documentation or the tests (e.g. `tests/test_transformer.rs` and `tests/test_one_shot.rs`) for usage examples.
+Please refer to the [online examples](https://etfrogers.github.io/hankrs/) for extensive walkthroughs and mathematical comparisons. You can also view the tests (e.g. `tests/test_transformer.rs` and `tests/test_one_shot.rs`) for usage examples.

@@ -34,6 +34,8 @@ pub trait HankelScalar: Clone + Zero {
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>;
 }
 
+/// Implementation of [`HankelScalar`] for real, 64-bit floating point numbers (`f64`).
+/// This allows `HankelTransform` methods to be called directly on purely real arrays.
 impl HankelScalar for f64 {
     fn dot_real_matrix(matrix: &Array2<f64>, vector: &ArrayView1<f64>) -> Array1<f64> {
         matrix.dot(vector)
@@ -53,6 +55,9 @@ impl HankelScalar for f64 {
     }
 }
 
+/// Implementation of [`HankelScalar`] for complex, 64-bit floating point numbers (`Complex<f64>`).
+/// This allows `HankelTransform` methods to be called directly on complex arrays. Real and
+/// imaginary parts are processed through the underlying transform operations seamlessly.
 impl HankelScalar for Complex<f64> {
     fn dot_real_matrix(
         matrix: &Array2<f64>,
@@ -97,10 +102,32 @@ impl HankelScalar for Complex<f64> {
 
 /// The main struct for performing Hankel Transforms
 ///
+/// This struct computes the quasi-discrete approximation of the continuous Hankel transform of order p:
+///
+/// `H_p{ f(r) } = Integral[ f(r) * J_p(k * r) * r dr ]` from `r = 0` to `infinity`
+///
 /// For the QDHT to work, the function must be sampled at specific points, which this struct generates
 /// and stores in `self.r`. Any transform on this grid will be sampled at points
 /// `self.v` (frequency space) or equivalently `self.kr`
 /// (angular frequency or wavenumber space).
+///
+/// ## Native Complex Support
+/// Because `HankelTransform` accepts arrays parameterized by `T: HankelScalar`, you can seamlessly
+/// transform complex-valued arrays (e.g. `Array1<Complex64>`) without splitting them into real
+/// and imaginary parts manually.
+///
+/// ## Examples
+/// ```rust
+/// use hankrs::HankelTransform;
+/// use ndarray::{Array1, Axis};
+///
+/// let transformer = HankelTransform::new(0, 10.0, 256);
+/// let r = transformer.radius();
+/// let f = r.mapv(|rad| (-rad * rad).exp());
+///
+/// // Perform the quasi-discrete Hankel transform
+/// let ht = transformer.qdht(&f, Axis(0));
+/// ```
 ///
 /// The constructor has one required argument (`order`). The remaining arguments offer
 /// three different ways of specifying the radial (and therefore implicitly the frequency) points:
@@ -113,7 +140,7 @@ impl HankelScalar for Complex<f64> {
 ///    except for the fact that the original radial grid is stored in the [`HankelTransform`]
 ///    object for use in [`HankelTransform::to_transform_r`] and
 ///    [`HankelTransform::to_original_r`].
-/// 3. Supply the original (often equally spaced) $k$-space grid on which you
+/// 3. Supply the original (often equally spaced) `k`-space grid on which you
 ///    currently have sample points. This is most useful if you intend to do inverse
 ///    transforms. It allows easy conversion to and from the original grid using
 ///    [`HankelTransform::to_original_k`] and [`HankelTransform::to_transform_k`].
@@ -130,11 +157,11 @@ impl HankelScalar for Complex<f64> {
 /// The algorithm also uses root finding to calculate the roots of the bessel function.
 #[derive(PartialEq)]
 pub struct HankelTransform {
-    /// Transform order $p$
+    /// Transform order `p`
     order: i32,
-    /// Number of sample points $N$
+    /// Number of sample points `N`
     n_points: usize,
-    /// Radial extent of transform $r_{max}$
+    /// Radial extent of transform `r_max`
     max_radius: f64,
     /// Frequency extent of transform
     max_v: f64,
@@ -142,7 +169,7 @@ pub struct HankelTransform {
     max_kr: f64,
     /// Original radial grid on which sample points were provided
     original_radial_grid: Option<Array1<f64>>,
-    /// Original $k$-space grid on which sample points were provided
+    /// Original `k`-space grid on which sample points were provided
     original_k_grid: Option<Array1<f64>>,
     /// Radial co-ordinate vector
     r: Array1<f64>,
@@ -152,9 +179,9 @@ pub struct HankelTransform {
     v: Array1<f64>,
     /// Transform matrix
     t: Array2<f64>,
-    /// Frequency transform vector $J_V = J_{p+1}(\alpha) / v_{max}$
+    /// Frequency transform vector `J_V = J_{p+1}(\alpha) / v_{max}`
     jv: Array1<f64>,
-    /// Radius transform vector $J_R = J_{p+1}(\alpha) / r_{max}$
+    /// Radius transform vector `J_R = J_{p+1}(\alpha) / r_max`
     jr: Array1<f64>,
 }
 
@@ -209,9 +236,9 @@ impl HankelTransform {
     /// Create a new `HankelTransform` by explicitly specifying the maximum radius and number of points.
     ///
     /// # Arguments
-    /// * `order` - Transform order $p$.
-    /// * `max_radius` - Radial extent of the transform $r_{max}$.
-    /// * `n_points` - Number of sample points $N$.
+    /// * `order` - Transform order `p`.
+    /// * `max_radius` - Radial extent of the transform `r_max`.
+    /// * `n_points` - Number of sample points `N`.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
         Self::build(n_points, Some(max_radius), order, None, None)
     }
@@ -222,7 +249,7 @@ impl HankelTransform {
     /// of the grid as the maximum radius.
     ///
     /// # Arguments
-    /// * `order` - Transform order $p$.
+    /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
         Self::build(
@@ -234,14 +261,14 @@ impl HankelTransform {
         )
     }
 
-    /// Create a new `HankelTransform` from an existing $k$-space grid.
+    /// Create a new `HankelTransform` from an existing `k`-space grid.
     ///
     /// This uses the length of the grid as the number of points. The maximum radius
-    /// is determined dynamically from the maximum value of the $k$-grid.
+    /// is determined dynamically from the maximum value of the `k`-grid.
     ///
     /// # Arguments
-    /// * `order` - Transform order $p$.
-    /// * `k_grid` - The $k$-space grid that will be used to sample input functions.
+    /// * `order` - Transform order `p`.
+    /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
         Self::build(k_grid.len(), None, order, None, Some(k_grid))
     }
@@ -308,27 +335,27 @@ impl HankelTransform {
         }
     }
 
-    /// Returns the order $p$ of the transform.
+    /// Returns the order `p` of the transform.
     pub fn order(&self) -> i32 {
         self.order
     }
 
-    /// Returns the maximum radius $r_{max}$ of the transform.
+    /// Returns the maximum radius `r_max` of the transform.
     pub fn max_radius(&self) -> f64 {
         self.max_radius
     }
 
-    /// Returns the maximum radius $r_{max}$ of the transform.
+    /// Returns the maximum radius `r_max` of the transform.
     pub fn max_kr(&self) -> f64 {
         self.max_kr
     }
 
-    /// Returns the maximum radius $r_{max}$ of the transform.
+    /// Returns the maximum radius `r_max` of the transform.
     pub fn max_frequency(&self) -> f64 {
         self.max_v
     }
 
-    /// Returns the number of sample points $N$.
+    /// Returns the number of sample points `N`.
     pub fn n_points(self) -> usize {
         self.n_points
     }
@@ -455,7 +482,7 @@ impl HankelTransform {
     /// for use in the IQDHT algorithm.
     ///
     /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
-    /// grid in $k$, then it needs the function to transform to be sampled at a specific
+    /// grid in `k`, then it needs the function to transform to be sampled at a specific
     /// grid before it can be passed to [`HankelTransform::iqdht`]. This method provides
     /// a convenient way of doing this.
     ///
@@ -473,7 +500,7 @@ impl HankelTransform {
 
     /// Multi-dimensional equivalent of [`HankelTransform::to_transform_k`].
     ///
-    /// Interpolates an N-dimensional function, assumed to have been given at the original $k$-space
+    /// Interpolates an N-dimensional function, assumed to have been given at the original `k`-space
     /// grid points, onto the grid required for use in the IQDHT algorithm along a specified axis.
     ///
     /// # Arguments
@@ -505,7 +532,7 @@ impl HankelTransform {
     /// used to construct the [`HankelTransform`] object.
     ///
     /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
-    /// grid in $k$, it may be useful to convert back to this grid after a QDHT.
+    /// grid in `k`, it may be useful to convert back to this grid after a QDHT.
     /// This method provides a convenient way of doing this.
     ///
     /// # Arguments
@@ -522,7 +549,7 @@ impl HankelTransform {
     /// Multi-dimensional equivalent of [`HankelTransform::to_original_k`].
     ///
     /// Interpolates an N-dimensional function, assumed to have been given at the Hankel transform points,
-    /// back onto the original $k$-space grid used to construct the object along a specified axis.
+    /// back onto the original `k`-space grid used to construct the object along a specified axis.
     ///
     /// # Arguments
     /// * `function` - The N-dimensional function to be interpolated.
@@ -553,7 +580,13 @@ impl HankelTransform {
     /// Performs the Hankel transform of a function of radius, returning
     /// a function of frequency.
     ///
-    /// $f_v(v) = \mathcal{H}^{-1}\{f_r(r)\}$
+    /// Mathematically, it computes `F(v) = H{ f(r) }`.
+    /// In terms of the discrete matrix operations, it evaluates:
+    ///
+    /// `F = J_V * ( T * (f / J_R) )`
+    ///
+    /// where `T` is the symmetric transform matrix, `J_V` and `J_R` are the scale factors.
+    /// The division by `J_R` and multiplication by `J_V` are element-wise operations.
     ///
     /// # Warning
     /// The input function must be sampled at the points `self.r`, and the output
@@ -580,7 +613,10 @@ impl HankelTransform {
     /// Performs the inverse Hankel transform of a function of frequency, returning
     /// a function of radius.
     ///
-    /// $f_r(r) = \mathcal{H}^{-1}\{f_v(v)\}$
+    /// Mathematically, it computes `f(r) = H^{-1}{ F(v) }`.
+    /// Because the QDHT transform matrix `T` is symmetric and its own inverse, the discrete matrix operation is identical to the forward transform, but with the role of the scale factors `J_R` and `J_V` reversed:
+    ///
+    /// `f = J_R * ( T * (F / J_V) )`
     ///
     /// # Arguments
     /// * `fv` - Function in frequency space (sampled at `self.v`).
@@ -621,27 +657,27 @@ impl HankelTransform {
         &self.t
     }
 
-    /// Returns a reference to the radial coordinate vector $r$.
+    /// Returns a reference to the radial coordinate vector `r`.
     pub fn radius(&self) -> &Array1<f64> {
         &self.r
     }
 
-    /// Returns a reference to the frequency coordinate vector $v$.
+    /// Returns a reference to the frequency coordinate vector `v`.
     pub fn frequency(&self) -> &Array1<f64> {
         &self.v
     }
 
-    /// Returns a reference to the radial wave number coordinate vector $kr$.
+    /// Returns a reference to the radial wave number coordinate vector `kr`.
     pub fn kr(&self) -> &Array1<f64> {
         &self.kr
     }
 
-    /// Consumes the transform and returns the radial coordinate vector $r$.
+    /// Consumes the transform and returns the radial coordinate vector `r`.
     pub(crate) fn into_radius(self) -> Array1<f64> {
         self.r
     }
 
-    /// Consumes the transform and returns the radial wave number coordinate vector $kr$.
+    /// Consumes the transform and returns the radial wave number coordinate vector `kr`.
     pub(crate) fn into_kr(self) -> Array1<f64> {
         self.kr
     }
