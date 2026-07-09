@@ -1,3 +1,5 @@
 /target
 profile.json
 .DS_Store
+docs/book/*
+docs/src/images/*

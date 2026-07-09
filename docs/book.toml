@@ -1,0 +1,14 @@
+[book]
+authors = ["Edward Rogers"]
+language = "en"
+src = "src"
+title = "hankrs Documentation & Gallery"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[preprocessor.cmdrun]
+
+[output.html]
+mathjax-support = true

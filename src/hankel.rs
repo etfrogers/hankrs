@@ -6,13 +6,128 @@ use std::{f64::consts::PI, fmt::Debug};
 
 use amos_bessel_rs::bessel_j;
 use bessel_zeros::{BesselFunType, bessel_zeros};
+use ndarray::ArrayView1;
+use num::Zero;
+use num_complex::Complex;
+
+/// A trait for scalar types that can be processed by the Hankel transform.
+/// It abstracts over basic array arithmetic and matrix multiplications.
+pub trait HankelScalar: Clone + Zero {
+    /// Multiplies a purely real transform matrix with a vector of this scalar type.
+    fn dot_real_matrix(matrix: &Array2<f64>, vector: &ArrayView1<Self>) -> Array1<Self>;
+
+    /// Divides a vector of this scalar type by a purely real vector.
+    fn div_real_array(vector: &ArrayView1<Self>, scale: &Array1<f64>) -> Array1<Self>;
+
+    /// Multiplies a mutable vector of this scalar type in-place by a purely real vector.
+    fn mul_real_array_assign(vector: &mut Array1<Self>, scale: &Array1<f64>);
+
+    /// Interpolates the array along the specified axis using a cubic spline.
+    fn spline<D>(
+        x0: &Array1<f64>,
+        y0: &Array<Self, D>,
+        x: &Array1<f64>,
+        axis: Axis,
+    ) -> Array<Self, D>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>;
+}
+
+/// Implementation of [`HankelScalar`] for real, 64-bit floating point numbers (`f64`).
+/// This allows `HankelTransform` methods to be called directly on purely real arrays.
+impl HankelScalar for f64 {
+    fn dot_real_matrix(matrix: &Array2<f64>, vector: &ArrayView1<f64>) -> Array1<f64> {
+        matrix.dot(vector)
+    }
+    fn div_real_array(vector: &ArrayView1<f64>, scale: &Array1<f64>) -> Array1<f64> {
+        vector.to_owned() / scale
+    }
+    fn mul_real_array_assign(vector: &mut Array1<f64>, scale: &Array1<f64>) {
+        *vector *= scale;
+    }
+    fn spline<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
+        spline_f64(x0, y0, x, axis)
+    }
+}
+
+/// Implementation of [`HankelScalar`] for complex, 64-bit floating point numbers (`Complex<f64>`).
+/// This allows `HankelTransform` methods to be called directly on complex arrays. Real and
+/// imaginary parts are processed through the underlying transform operations seamlessly.
+impl HankelScalar for Complex<f64> {
+    fn dot_real_matrix(
+        matrix: &Array2<f64>,
+        vector: &ArrayView1<Complex<f64>>,
+    ) -> Array1<Complex<f64>> {
+        let real_part = matrix.dot(&vector.mapv(|c| c.re));
+        let imag_part = matrix.dot(&vector.mapv(|c| c.im));
+        ndarray::Zip::from(&real_part)
+            .and(&imag_part)
+            .map_collect(|&r, &i| Complex::new(r, i))
+    }
+    fn div_real_array(
+        vector: &ArrayView1<Complex<f64>>,
+        scale: &Array1<f64>,
+    ) -> Array1<Complex<f64>> {
+        ndarray::Zip::from(vector)
+            .and(scale)
+            .map_collect(|&v, &s| v / s)
+    }
+    fn mul_real_array_assign(vector: &mut Array1<Complex<f64>>, scale: &Array1<f64>) {
+        ndarray::Zip::from(vector)
+            .and(scale)
+            .for_each(|v, &s| *v *= s);
+    }
+    fn spline<D>(
+        x0: &Array1<f64>,
+        y0: &Array<Complex<f64>, D>,
+        x: &Array1<f64>,
+        axis: Axis,
+    ) -> Array<Complex<f64>, D>
+    where
+        D: Dimension + RemoveAxis,
+        Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    {
+        let real_part = spline_f64(x0, &y0.mapv(|c| c.re), x, axis);
+        let imag_part = spline_f64(x0, &y0.mapv(|c| c.im), x, axis);
+        ndarray::Zip::from(&real_part)
+            .and(&imag_part)
+            .map_collect(|&r, &i| Complex::new(r, i))
+    }
+}
 
 /// The main struct for performing Hankel Transforms
+///
+/// This struct computes the quasi-discrete approximation of the continuous Hankel transform of order p:
+///
+/// `H_p{ f(r) } = Integral[ f(r) * J_p(k * r) * r dr ]` from `r = 0` to `infinity`
 ///
 /// For the QDHT to work, the function must be sampled at specific points, which this struct generates
 /// and stores in `self.r`. Any transform on this grid will be sampled at points
 /// `self.v` (frequency space) or equivalently `self.kr`
 /// (angular frequency or wavenumber space).
+///
+/// ## Native Complex Support
+/// Because `HankelTransform` accepts arrays parameterized by `T: HankelScalar`, you can seamlessly
+/// transform complex-valued arrays (e.g. `Array1<Complex64>`) without splitting them into real
+/// and imaginary parts manually.
+///
+/// ## Examples
+/// ```rust
+/// use hankrs::HankelTransform;
+/// use ndarray::{Array1, Axis};
+///
+/// let transformer = HankelTransform::new(0, 10.0, 256);
+/// let r = transformer.radius();
+/// let f = r.mapv(|rad| (-rad * rad).exp());
+///
+/// // Perform the quasi-discrete Hankel transform
+/// let ht = transformer.qdht(&f, Axis(0));
+/// ```
 ///
 /// The constructor has one required argument (`order`). The remaining arguments offer
 /// three different ways of specifying the radial (and therefore implicitly the frequency) points:
@@ -25,7 +140,7 @@ use bessel_zeros::{BesselFunType, bessel_zeros};
 ///    except for the fact that the original radial grid is stored in the [`HankelTransform`]
 ///    object for use in [`HankelTransform::to_transform_r`] and
 ///    [`HankelTransform::to_original_r`].
-/// 3. Supply the original (often equally spaced) $k$-space grid on which you
+/// 3. Supply the original (often equally spaced) `k`-space grid on which you
 ///    currently have sample points. This is most useful if you intend to do inverse
 ///    transforms. It allows easy conversion to and from the original grid using
 ///    [`HankelTransform::to_original_k`] and [`HankelTransform::to_transform_k`].
@@ -42,15 +157,19 @@ use bessel_zeros::{BesselFunType, bessel_zeros};
 /// The algorithm also uses root finding to calculate the roots of the bessel function.
 #[derive(PartialEq)]
 pub struct HankelTransform {
-    /// Transform order $p$
+    /// Transform order `p`
     order: i32,
-    /// Number of sample points $N$
+    /// Number of sample points `N`
     n_points: usize,
-    /// Radial extent of transform $r_{max}$
+    /// Radial extent of transform `r_max`
     max_radius: f64,
+    /// Frequency extent of transform
+    max_v: f64,
+    /// wavenumber extent of transform
+    max_kr: f64,
     /// Original radial grid on which sample points were provided
     original_radial_grid: Option<Array1<f64>>,
-    /// Original $k$-space grid on which sample points were provided
+    /// Original `k`-space grid on which sample points were provided
     original_k_grid: Option<Array1<f64>>,
     /// Radial co-ordinate vector
     r: Array1<f64>,
@@ -60,9 +179,9 @@ pub struct HankelTransform {
     v: Array1<f64>,
     /// Transform matrix
     t: Array2<f64>,
-    /// Frequency transform vector $J_V = J_{p+1}(\alpha) / v_{max}$
+    /// Frequency transform vector `J_V = J_{p+1}(\alpha) / v_{max}`
     jv: Array1<f64>,
-    /// Radius transform vector $J_R = J_{p+1}(\alpha) / r_{max}$
+    /// Radius transform vector `J_R = J_{p+1}(\alpha) / r_max`
     jr: Array1<f64>,
 }
 
@@ -117,9 +236,9 @@ impl HankelTransform {
     /// Create a new `HankelTransform` by explicitly specifying the maximum radius and number of points.
     ///
     /// # Arguments
-    /// * `order` - Transform order $p$.
-    /// * `max_radius` - Radial extent of the transform $r_{max}$.
-    /// * `n_points` - Number of sample points $N$.
+    /// * `order` - Transform order `p`.
+    /// * `max_radius` - Radial extent of the transform `r_max`.
+    /// * `n_points` - Number of sample points `N`.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
         Self::build(n_points, Some(max_radius), order, None, None)
     }
@@ -130,7 +249,7 @@ impl HankelTransform {
     /// of the grid as the maximum radius.
     ///
     /// # Arguments
-    /// * `order` - Transform order $p$.
+    /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
         Self::build(
@@ -142,14 +261,14 @@ impl HankelTransform {
         )
     }
 
-    /// Create a new `HankelTransform` from an existing $k$-space grid.
+    /// Create a new `HankelTransform` from an existing `k`-space grid.
     ///
     /// This uses the length of the grid as the number of points. The maximum radius
-    /// is determined dynamically from the maximum value of the $k$-grid.
+    /// is determined dynamically from the maximum value of the `k`-grid.
     ///
     /// # Arguments
-    /// * `order` - Transform order $p$.
-    /// * `k_grid` - The $k$-space grid that will be used to sample input functions.
+    /// * `order` - Transform order `p`.
+    /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
         Self::build(k_grid.len(), None, order, None, Some(k_grid))
     }
@@ -181,7 +300,8 @@ impl HankelTransform {
         let r = alpha.clone() * max_radius / alpha_n1;
         let v = alpha.clone() / (2.0 * PI * max_radius);
         let kr = 2.0 * PI * v.clone();
-        let v_max = alpha_n1 / (2.0 * PI * max_radius);
+        let max_v = alpha_n1 / (2.0 * PI * max_radius);
+        let max_kr = 2.0 * PI * max_v;
         let s = alpha_n1;
 
         // Calculate hankel matrix and vectors
@@ -196,12 +316,14 @@ impl HankelTransform {
 
         let t: Array2<_> = 2.0 * jp / (jp1_row.dot(&jp1_col) * s);
         let jr: Array1<_> = jp1.clone() / max_radius;
-        let jv: Array1<_> = jp1 / v_max;
+        let jv: Array1<_> = jp1 / max_v;
 
         Self {
             order,
             n_points,
             max_radius,
+            max_v,
+            max_kr,
             original_radial_grid,
             original_k_grid,
             r,
@@ -213,17 +335,27 @@ impl HankelTransform {
         }
     }
 
-    /// Returns the order $p$ of the transform.
+    /// Returns the order `p` of the transform.
     pub fn order(&self) -> i32 {
         self.order
     }
 
-    /// Returns the maximum radius $r_{max}$ of the transform.
+    /// Returns the maximum radius `r_max` of the transform.
     pub fn max_radius(&self) -> f64 {
         self.max_radius
     }
 
-    /// Returns the number of sample points $N$.
+    /// Returns the maximum radius `r_max` of the transform.
+    pub fn max_kr(&self) -> f64 {
+        self.max_kr
+    }
+
+    /// Returns the maximum radius `r_max` of the transform.
+    pub fn max_frequency(&self) -> f64 {
+        self.max_v
+    }
+
+    /// Returns the number of sample points `N`.
     pub fn n_points(self) -> usize {
         self.n_points
     }
@@ -263,8 +395,7 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::qdht`] (sampled at `self.r`).
-
-    pub fn to_transform_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_transform_r<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_transform_r_nd(function, Axis(0))
     }
 
@@ -279,16 +410,16 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::qdht`].
-    pub fn to_transform_r_nd<D: Dimension + RemoveAxis>(
+    pub fn to_transform_r_nd<T: HankelScalar, D: Dimension + RemoveAxis>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(r_grid) = self.original_radial_grid() {
-            Ok(spline(r_grid, function, &self.r, axis))
+            Ok(T::spline(r_grid, function, &self.r, axis))
         } else {
             Err(
                 "Attempted to interpolate onto transform radial grid on HankelTransform \
@@ -312,7 +443,7 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
-    pub fn to_original_r(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_original_r<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_original_r_nd(function, Axis(0))
     }
 
@@ -327,17 +458,17 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
-    pub fn to_original_r_nd<D>(
+    pub fn to_original_r_nd<T: HankelScalar, D>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         D: Dimension + RemoveAxis,
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(r_grid) = self.original_radial_grid() {
-            Ok(spline(&self.r, function, r_grid, axis))
+            Ok(T::spline(&self.r, function, r_grid, axis))
         } else {
             Err(
                 "Attempted to interpolate onto original_radial_grid on HankelTransform \
@@ -351,7 +482,7 @@ impl HankelTransform {
     /// for use in the IQDHT algorithm.
     ///
     /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
-    /// grid in $k$, then it needs the function to transform to be sampled at a specific
+    /// grid in `k`, then it needs the function to transform to be sampled at a specific
     /// grid before it can be passed to [`HankelTransform::iqdht`]. This method provides
     /// a convenient way of doing this.
     ///
@@ -363,13 +494,13 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::qdht`] (sampled at `self.kr`).
-    pub fn to_transform_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_transform_k<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_transform_k_nd(function, Axis(0))
     }
 
     /// Multi-dimensional equivalent of [`HankelTransform::to_transform_k`].
     ///
-    /// Interpolates an N-dimensional function, assumed to have been given at the original $k$-space
+    /// Interpolates an N-dimensional function, assumed to have been given at the original `k`-space
     /// grid points, onto the grid required for use in the IQDHT algorithm along a specified axis.
     ///
     /// # Arguments
@@ -378,16 +509,16 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::iqdht`].
-    pub fn to_transform_k_nd<D: Dimension + RemoveAxis>(
+    pub fn to_transform_k_nd<T: HankelScalar, D: Dimension + RemoveAxis>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(k_grid) = self.original_k_grid() {
-            Ok(spline(k_grid, function, &self.kr, axis))
+            Ok(T::spline(k_grid, function, &self.kr, axis))
         } else {
             Err(
                 "Attempted to interpolate onto transform k grid on HankelTransform \
@@ -401,7 +532,7 @@ impl HankelTransform {
     /// used to construct the [`HankelTransform`] object.
     ///
     /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
-    /// grid in $k$, it may be useful to convert back to this grid after a QDHT.
+    /// grid in `k`, it may be useful to convert back to this grid after a QDHT.
     /// This method provides a convenient way of doing this.
     ///
     /// # Arguments
@@ -411,14 +542,14 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
-    pub fn to_original_k(&self, function: &Array1<f64>) -> Result<Array1<f64>, &str> {
+    pub fn to_original_k<T: HankelScalar>(&self, function: &Array1<T>) -> Result<Array1<T>, &str> {
         self.to_original_k_nd(function, Axis(0))
     }
 
     /// Multi-dimensional equivalent of [`HankelTransform::to_original_k`].
     ///
     /// Interpolates an N-dimensional function, assumed to have been given at the Hankel transform points,
-    /// back onto the original $k$-space grid used to construct the object along a specified axis.
+    /// back onto the original `k`-space grid used to construct the object along a specified axis.
     ///
     /// # Arguments
     /// * `function` - The N-dimensional function to be interpolated.
@@ -426,16 +557,16 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
-    pub fn to_original_k_nd<D: Dimension + RemoveAxis>(
+    pub fn to_original_k_nd<T: HankelScalar, D: Dimension + RemoveAxis>(
         &self,
-        function: &Array<f64, D>,
+        function: &Array<T, D>,
         axis: Axis,
-    ) -> Result<Array<f64, D>, &str>
+    ) -> Result<Array<T, D>, &str>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(k_grid) = self.original_k_grid() {
-            Ok(spline(&self.kr, function, k_grid, axis))
+            Ok(T::spline(&self.kr, function, k_grid, axis))
         } else {
             Err(
                 "Attempted to interpolate onto original_k_grid on HankelTransform \
@@ -449,7 +580,13 @@ impl HankelTransform {
     /// Performs the Hankel transform of a function of radius, returning
     /// a function of frequency.
     ///
-    /// $f_v(v) = \mathcal{H}^{-1}\{f_r(r)\}$
+    /// Mathematically, it computes `F(v) = H{ f(r) }`.
+    /// In terms of the discrete matrix operations, it evaluates:
+    ///
+    /// `F = J_V * ( T * (f / J_R) )`
+    ///
+    /// where `T` is the symmetric transform matrix, `J_V` and `J_R` are the scale factors.
+    /// The division by `J_R` and multiplication by `J_V` are element-wise operations.
     ///
     /// # Warning
     /// The input function must be sampled at the points `self.r`, and the output
@@ -461,7 +598,11 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Function in frequency space (sampled at `self.v`).
-    pub fn qdht<D: Dimension + RemoveAxis>(&self, fr: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
+    pub fn qdht<T: HankelScalar, D: Dimension + RemoveAxis>(
+        &self,
+        fr: &Array<T, D>,
+        axis: Axis,
+    ) -> Array<T, D> {
         let scale_factor_input = &self.jr;
         let scale_factor_output = &self.jv;
         self.transform_by_lines(fr, axis, scale_factor_input, scale_factor_output)
@@ -472,7 +613,10 @@ impl HankelTransform {
     /// Performs the inverse Hankel transform of a function of frequency, returning
     /// a function of radius.
     ///
-    /// $f_r(r) = \mathcal{H}^{-1}\{f_v(v)\}$
+    /// Mathematically, it computes `f(r) = H^{-1}{ F(v) }`.
+    /// Because the QDHT transform matrix `T` is symmetric and its own inverse, the discrete matrix operation is identical to the forward transform, but with the role of the scale factors `J_R` and `J_V` reversed:
+    ///
+    /// `f = J_R * ( T * (F / J_V) )`
     ///
     /// # Arguments
     /// * `fv` - Function in frequency space (sampled at `self.v`).
@@ -480,25 +624,29 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Radial function (sampled at `self.r`) = IHT(fv).
-    pub fn iqdht<D: Dimension>(&self, fv: &Array<f64, D>, axis: Axis) -> Array<f64, D> {
+    pub fn iqdht<T: HankelScalar, D: Dimension>(
+        &self,
+        fv: &Array<T, D>,
+        axis: Axis,
+    ) -> Array<T, D> {
         self.transform_by_lines(fv, axis, &self.jv, &self.jr)
     }
 
-    fn transform_by_lines<D: Dimension>(
+    fn transform_by_lines<T: HankelScalar, D: Dimension>(
         &self,
-        f: &Array<f64, D>,
+        f: &Array<T, D>,
         axis: Axis,
         scale_factor_input: &Array1<f64>,
         scale_factor_output: &Array1<f64>,
-    ) -> Array<f64, D> {
+    ) -> Array<T, D> {
         let mut transform = Array::zeros(f.dim());
 
         for (mut transform_line, fr_line) in
             transform.lanes_mut(axis).into_iter().zip(f.lanes(axis))
         {
-            let scaled_line = fr_line.to_owned() / scale_factor_input;
-            let mut transformed = self.t.dot(&scaled_line);
-            transformed *= scale_factor_output;
+            let scaled_line = T::div_real_array(&fr_line, scale_factor_input);
+            let mut transformed = T::dot_real_matrix(&self.t, &scaled_line.view());
+            T::mul_real_array_assign(&mut transformed, scale_factor_output);
             transform_line.assign(&transformed);
         }
         transform
@@ -509,27 +657,27 @@ impl HankelTransform {
         &self.t
     }
 
-    /// Returns a reference to the radial coordinate vector $r$.
+    /// Returns a reference to the radial coordinate vector `r`.
     pub fn radius(&self) -> &Array1<f64> {
         &self.r
     }
 
-    /// Returns a reference to the frequency coordinate vector $v$.
+    /// Returns a reference to the frequency coordinate vector `v`.
     pub fn frequency(&self) -> &Array1<f64> {
         &self.v
     }
 
-    /// Returns a reference to the radial wave number coordinate vector $kr$.
+    /// Returns a reference to the radial wave number coordinate vector `kr`.
     pub fn kr(&self) -> &Array1<f64> {
         &self.kr
     }
 
-    /// Consumes the transform and returns the radial coordinate vector $r$.
+    /// Consumes the transform and returns the radial coordinate vector `r`.
     pub(crate) fn into_radius(self) -> Array1<f64> {
         self.r
     }
 
-    /// Consumes the transform and returns the radial wave number coordinate vector $kr$.
+    /// Consumes the transform and returns the radial wave number coordinate vector `kr`.
     pub(crate) fn into_kr(self) -> Array1<f64> {
         self.kr
     }
@@ -552,7 +700,7 @@ pub fn perms<D: Dimension>(axis: Axis) -> (D, D) {
     (forward_d, backward_d)
 }
 
-fn spline<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
+fn spline_f64<D>(x0: &Array1<f64>, y0: &Array<f64, D>, x: &Array1<f64>, axis: Axis) -> Array<f64, D>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
