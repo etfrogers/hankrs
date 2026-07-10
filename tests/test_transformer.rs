@@ -73,6 +73,16 @@ fn transformer_zero_order(radius: Array1<f64>) -> HankelTransform {
 }
 
 #[rstest]
+fn test_getters(transformer_zero_order: &HankelTransform) {
+    assert_relative_eq!(transformer_zero_order.max_radius(), 3.0);
+    assert_eq!(transformer_zero_order.n_points(), 1024);
+    assert_relative_eq!(
+        transformer_zero_order.max_kr(),
+        transformer_zero_order.max_frequency() * 2.0 * PI
+    )
+}
+
+#[rstest]
 fn test_round_trip(transformer_zero_order: &HankelTransform) {
     let fun = random_array_like(transformer_zero_order.radius());
     let ht = transformer_zero_order.qdht(&fun, Axis(0));
