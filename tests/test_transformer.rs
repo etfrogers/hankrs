@@ -283,6 +283,29 @@ fn test_gaussian(transformer_zero_order: &HankelTransform, #[values(2.0, 5.0, 10
 }
 
 #[rstest]
+fn test_gaussian_complex(
+    transformer_zero_order: &HankelTransform,
+    #[values(2.0, 5.0, 10.0)] a: f64,
+) {
+    // Note the definition in Guizar-Sicairos varies by 2*pi in
+    // both scaling of the argument (so use kr rather than v) and
+    // scaling of the magnitude.
+
+    use num::Complex;
+    let a2 = a.powi(2);
+    let f = transformer_zero_order
+        .radius()
+        .mapv(|r| Complex::new((-a2 * r.powi(2)).exp(), 0.0));
+    let expected_ht = transformer_zero_order
+        .kr()
+        .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
+    let actual_ht = transformer_zero_order.qdht(&f.into_dyn(), Axis(0));
+    assert_arrays_equal(&expected_ht, &actual_ht.map(|c| c.re), 1e-9, 0.0);
+    let n = transformer_zero_order.n_points();
+    assert_arrays_equal(&vec![0.0; n], &actual_ht.map(|c| c.im), 1e-9, 0.0);
+}
+
+#[rstest]
 fn test_inverse_gaussian(
     transformer_zero_order: &HankelTransform,
     #[values(2.0, 5.0, 10.0)] a: f64,

@@ -356,7 +356,7 @@ impl HankelTransform {
     }
 
     /// Returns the number of sample points `N`.
-    pub fn n_points(self) -> usize {
+    pub fn n_points(&self) -> usize {
         self.n_points
     }
 
