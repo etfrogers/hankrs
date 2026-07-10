@@ -83,6 +83,35 @@ fn test_getters(transformer_zero_order: &HankelTransform) {
 }
 
 #[rstest]
+fn test_errors(radius: Array1<f64>) {
+    let fun = random_array_like(&radius);
+
+    let transformer = HankelTransform::new(0, 3.0, 256);
+    assert!(transformer.to_original_r(&fun).is_err());
+    assert!(transformer.to_original_k(&fun).is_err());
+    assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_original_k_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_err());
+
+    let transformer = HankelTransform::new_from_r_grid(0, radius.clone());
+    assert!(transformer.to_original_r(&fun).is_ok());
+    assert!(transformer.to_original_k(&fun).is_err());
+    assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_ok());
+    assert!(transformer.to_original_k_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_ok());
+    assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_err());
+
+    let transformer = HankelTransform::new_from_k_grid(0, radius);
+    assert!(transformer.to_original_r(&fun).is_err());
+    assert!(transformer.to_original_k(&fun).is_ok());
+    assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_original_k_nd(&fun, Axis(0)).is_ok());
+    assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_ok());
+}
+
+#[rstest]
 fn test_round_trip(transformer_zero_order: &HankelTransform) {
     let fun = random_array_like(transformer_zero_order.radius());
     let ht = transformer_zero_order.qdht(&fun, Axis(0));
