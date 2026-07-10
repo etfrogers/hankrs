@@ -485,6 +485,14 @@ fn test_sinc(#[values(1, 4)] p: i32) {
         assert!(*de < threshold);
     });
 }
+
+#[rstest]
+fn test_debug_impl() {
+    let transformer = HankelTransform::new(1, 3.0, 256);
+    let debug_str = format!("{:?}", transformer);
+    assert!(!debug_str.is_empty());
+}
+
 /*
 fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
     let out_file_name = format!("graph{p}.png");
