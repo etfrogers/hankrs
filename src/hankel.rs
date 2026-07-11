@@ -240,7 +240,7 @@ impl HankelTransform {
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
-        Self::build(n_points, Some(max_radius), order, None, None)
+        Self::build(order, n_points, Some(max_radius), None, None)
     }
 
     /// Create a new `HankelTransform` from an existing radial grid.
@@ -252,13 +252,7 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
-        Self::build(
-            radial_grid.len(),
-            Some(*radial_grid.max().unwrap()),
-            order,
-            Some(radial_grid),
-            None,
-        )
+        Self::build(order, radial_grid.len(), None, Some(radial_grid), None)
     }
 
     /// Create a new `HankelTransform` from an existing `k`-space grid.
@@ -270,13 +264,13 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
-        Self::build(k_grid.len(), None, order, None, Some(k_grid))
+        Self::build(order, k_grid.len(), None, None, Some(k_grid))
     }
 
     fn build(
+        order: i32,
         n_points: usize,
         max_radius: Option<f64>,
-        order: i32,
         original_radial_grid: Option<Array1<f64>>,
         original_k_grid: Option<Array1<f64>>,
     ) -> Self {
@@ -286,15 +280,16 @@ impl HankelTransform {
         let alpha_n1 = alpha[n_points];
         let alpha = alpha.slice(s![0..n_points]).to_owned();
 
-        let max_radius = match max_radius {
-            Some(mr) => mr,
-            None => match original_k_grid {
-                Some(ref kg) => {
-                    let v_max = kg.max().unwrap() / (2.0 * PI);
-                    alpha_n1 / (2.0 * PI * v_max)
-                }
-                None => panic!("Either k_grid or radial parameters must be supplied"),
-            },
+        let max_radius = match (max_radius, &original_radial_grid, &original_k_grid) {
+            (Some(mr), None, None) => mr,
+            (None, Some(rg), None) => *rg.max().unwrap(),
+            (None, None, Some(kg)) => {
+                let v_max = kg.max().unwrap() / (2.0 * PI);
+                alpha_n1 / (2.0 * PI * v_max)
+            }
+            _ => unreachable!(
+                "Invaritant violated: exactly one of max_radius, original_radial_grid, or original_k_grid must be supplied"
+            ),
         };
         // Calculate co-ordinate vectors
         let r = alpha.clone() * max_radius / alpha_n1;
@@ -356,7 +351,7 @@ impl HankelTransform {
     }
 
     /// Returns the number of sample points `N`.
-    pub fn n_points(self) -> usize {
+    pub fn n_points(&self) -> usize {
         self.n_points
     }
 

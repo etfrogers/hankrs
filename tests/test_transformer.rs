@@ -6,12 +6,14 @@ use hankrs::HankelTransform;
 use ndarray::{Array, Array1, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
+use num_complex::Complex64;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
 use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit, sync::LazyLock};
 use utils::{
-    assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat, outer, radius,
+    assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat, outer,
+    outer_complex, radius,
 };
 
 use crate::utils::assert_arrays_equal;
@@ -70,6 +72,45 @@ fn smooth_shapes(#[case] shape: Shape) {}
 fn transformer_zero_order(radius: Array1<f64>) -> HankelTransform {
     let order = 0;
     HankelTransform::new_from_r_grid(order, radius)
+}
+
+#[rstest]
+fn test_getters(transformer_zero_order: &HankelTransform) {
+    assert_relative_eq!(transformer_zero_order.max_radius(), 3.0);
+    assert_eq!(transformer_zero_order.n_points(), 1024);
+    assert_relative_eq!(
+        transformer_zero_order.max_kr(),
+        transformer_zero_order.max_frequency() * 2.0 * PI
+    )
+}
+
+#[rstest]
+fn test_errors(radius: Array1<f64>) {
+    let fun = random_array_like(&radius);
+
+    let transformer = HankelTransform::new(0, 3.0, 256);
+    assert!(transformer.to_original_r(&fun).is_err());
+    assert!(transformer.to_original_k(&fun).is_err());
+    assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_original_k_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_err());
+
+    let transformer = HankelTransform::new_from_r_grid(0, radius.clone());
+    assert!(transformer.to_original_r(&fun).is_ok());
+    assert!(transformer.to_original_k(&fun).is_err());
+    assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_ok());
+    assert!(transformer.to_original_k_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_ok());
+    assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_err());
+
+    let transformer = HankelTransform::new_from_k_grid(0, radius);
+    assert!(transformer.to_original_r(&fun).is_err());
+    assert!(transformer.to_original_k(&fun).is_ok());
+    assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_original_k_nd(&fun, Axis(0)).is_ok());
+    assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_err());
+    assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_ok());
 }
 
 #[rstest]
@@ -283,6 +324,29 @@ fn test_gaussian(transformer_zero_order: &HankelTransform, #[values(2.0, 5.0, 10
 }
 
 #[rstest]
+fn test_gaussian_complex(
+    transformer_zero_order: &HankelTransform,
+    #[values(2.0, 5.0, 10.0)] a: f64,
+) {
+    // Note the definition in Guizar-Sicairos varies by 2*pi in
+    // both scaling of the argument (so use kr rather than v) and
+    // scaling of the magnitude.
+
+    use num::Complex;
+    let a2 = a.powi(2);
+    let f = transformer_zero_order
+        .radius()
+        .mapv(|r| Complex::new((-a2 * r.powi(2)).exp(), 0.0));
+    let expected_ht = transformer_zero_order
+        .kr()
+        .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
+    let actual_ht = transformer_zero_order.qdht(&f.into_dyn(), Axis(0));
+    assert_arrays_equal(&expected_ht, &actual_ht.map(|c| c.re), 1e-9, 0.0);
+    let n = transformer_zero_order.n_points();
+    assert_arrays_equal(&vec![0.0; n], &actual_ht.map(|c| c.im), 1e-9, 0.0);
+}
+
+#[rstest]
 fn test_inverse_gaussian(
     transformer_zero_order: &HankelTransform,
     #[values(2.0, 5.0, 10.0)] a: f64,
@@ -423,6 +487,14 @@ fn test_sinc(#[values(1, 4)] p: i32) {
         assert!(*de < threshold);
     });
 }
+
+#[rstest]
+fn test_debug_impl() {
+    let transformer = HankelTransform::new(1, 3.0, 256);
+    let debug_str = format!("{:?}", transformer);
+    assert!(!debug_str.is_empty());
+}
+
 /*
 fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
     let out_file_name = format!("graph{p}.png");
@@ -555,6 +627,43 @@ fn test_round_trip_r_interpolation_2d(
         .to_original_r_nd(&transform_func, Axis(axis))
         .unwrap();
     assert_arrays_equal(&func, &reconstructed_func, 1e-8, 1e-4);
+}
+
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_r_interpolation_2d_complex(
+    shape: Shape,
+    radius: Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+    #[values(0, 1)] axis: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+
+    // the function must be smoothish for interpolation
+    // to work. Random every point doesn't work
+    let amplitude = random_array(Dim(10)).mapv(|v| Complex64::new(v, 0.0));
+    let func_1d = radius.mapv(shape.f).mapv(|v| Complex64::new(v, v));
+    let func = if axis == 0 {
+        outer_complex(&func_1d, &amplitude)
+    } else {
+        outer_complex(&amplitude, &func_1d)
+    };
+    let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
+    let reconstructed_func = transformer
+        .to_original_r_nd(&transform_func, Axis(axis))
+        .unwrap();
+    assert_arrays_equal(
+        &func.mapv(|v| v.re),
+        &reconstructed_func.mapv(|v| v.re),
+        1e-8,
+        1e-4,
+    );
+    assert_arrays_equal(
+        &func.mapv(|v| v.im),
+        &reconstructed_func.mapv(|v| v.im),
+        1e-8,
+        1e-4,
+    );
 }
 
 #[apply(smooth_shapes)]
