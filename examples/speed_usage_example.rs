@@ -8,7 +8,7 @@ use std::time::Instant;
 
 // Speed of single-shot vs reuse of a HankelTransform object
 //
-// For a simple case there are two simple forward and inverse functions which can be used to calculate the 
+// For a simple case there are two simple forward and inverse functions which can be used to calculate the
 // Hankel transform of a function sampled at an arbitrary set of points in radius / wave-number space.
 // Here we will use the same example application as the usage_example:
 // a beam-propagation method propagation of a radially-symmetric Gaussian beam.
@@ -31,9 +31,9 @@ fn propagate_using_object(
 
     for (n, &z_loop) in z.iter().enumerate() {
         let phi_z = kz.mapv(|kz_val| kz_val * z_loop); // Propagation phase
-        let hankel_transform_at_z = ndarray::Zip::from(&hankel_transform).and(&phi_z).map_collect(|&ekr, &phi| {
-            ekr * Complex64::new(0.0, phi).exp()
-        }); // Apply propagation
+        let hankel_transform_at_z = ndarray::Zip::from(&hankel_transform)
+            .and(&phi_z)
+            .map_collect(|&ekr, &phi| ekr * Complex64::new(0.0, phi).exp()); // Apply propagation
         let field_at_z = transformer.iqdht(&hankel_transform_at_z, Axis(0)); // iQDHT
         let field_slice = transformer.to_original_r(&field_at_z).unwrap(); // Interpolate output
         propagated_field.column_mut(n).assign(&field_slice);
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The single shot approach takes a *lot* longer!
     // Plot the two results to check they are the same:
-    
+
     let z_mm = z.mapv(|val| val * 1e3);
     let r_mm = r.mapv(|val| val * 1e3);
 

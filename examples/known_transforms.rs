@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First we try a Gaussian function, the Hankel transform of which should also be Gaussian.
     //
     // Note the definition in Guizar-Sicairos varies from that used by
-    // Pissens by a factor of 2\pi in both scaling of the argument (so we use 
+    // Pissens by a factor of 2\pi in both scaling of the argument (so we use
     // HankelTransform.kr rather than HankelTransform.v) and also scaling of the magnitude.
     let a = 3.0;
     let radius = Array1::linspace(0.0, 3.0, 1024);

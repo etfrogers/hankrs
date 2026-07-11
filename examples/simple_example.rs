@@ -1,13 +1,13 @@
 mod helper;
-use hankrs::HankelTransform;
 use amos_bessel_rs::bessel_j;
+use hankrs::HankelTransform;
 use ndarray::Axis;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a HankelTransform object which holds the grid for r and kr points.
     let transformer = HankelTransform::new(0, 100.0, 1024);
     let radius = transformer.radius();
-    
+
     // Note that although the calculation fails at r = 0, transformer.radius() does not include r=0.
     let f = radius.mapv(|rad| bessel_j(1.0, rad).unwrap() / rad);
 
