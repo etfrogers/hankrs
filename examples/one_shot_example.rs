@@ -3,6 +3,8 @@ use amos_bessel_rs::bessel_j;
 use hankrs::one_shot::qdht;
 use ndarray::{Array1, Axis};
 
+use crate::helper::plot_1d;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- PART 1: Jinc to Top-Hat ---
     // Create a grid for r points and calculate the jinc function.
@@ -17,10 +19,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    helper::plot_1d(
+    plot_1d(
         "one_shot_example_f.png",
-        &r,
-        &f,
+        r.view(),
+        f.view(),
         "Jinc Function",
         "Radius /m",
         "Amplitude",
@@ -32,10 +34,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (kr, ht) = qdht(r.clone(), &f, 0, Axis(0));
 
     // As expected, this is a top-hat function bandlimited to k<1, except for numerical error.
-    helper::plot_1d(
+    plot_1d(
         "one_shot_example_ht.png",
-        &kr,
-        &ht,
+        kr.view(),
+        ht.view(),
         "Hankel Transform (Top Hat)",
         "Radial wavevector /m^-1",
         "Amplitude",
@@ -48,10 +50,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r2 = Array1::linspace(0.0, 5.0, 200);
     let f2 = r2.mapv(|rad| if rad < 1.0 { 1.0 } else { 0.0 });
 
-    helper::plot_1d(
+    plot_1d(
         "one_shot_example_tophat.png",
-        &r2,
-        &f2,
+        r2.view(),
+        f2.view(),
         "Top Hat Function",
         "Radius /m",
         "Amplitude",
@@ -62,10 +64,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Transform
     let (kr2, ht2) = qdht(r2.clone(), &f2, 0, Axis(0));
 
-    helper::plot_1d(
+    plot_1d(
         "one_shot_example_jinc.png",
-        &kr2,
-        &ht2,
+        kr2.view(),
+        ht2.view(),
         "QDHT of a Top Hat Function",
         "k_r",
         "Amplitude",

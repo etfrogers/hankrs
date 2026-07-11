@@ -1,4 +1,4 @@
-use ndarray::{Array, Array1, Axis, Dim, DimAdd, Dimension, RemoveAxis};
+use ndarray::{Array, Array1, ArrayBase, Axis, Data, Dim, DimAdd, Dimension, RemoveAxis};
 
 use crate::hankel::{HankelScalar, HankelTransform};
 
@@ -23,15 +23,16 @@ use crate::hankel::{HankelScalar, HankelTransform};
 ///
 /// # Returns
 /// A tuple containing the `k` coordinates of the transformed function and its values.
-pub fn qdht<T: HankelScalar, D>(
+pub fn qdht<T: HankelScalar, D, S>(
     r: Array1<f64>,
-    f: &Array<T, D>,
+    f: &ArrayBase<S, D>,
     order: i32,
     axis: Axis,
 ) -> (Array1<f64>, Array<T, D>)
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    S: Data<Elem = T>,
 {
     let transformer = HankelTransform::new_from_r_grid(order, r);
     let f_transform = transformer.to_transform_r_nd(f, axis).unwrap();
@@ -60,15 +61,16 @@ where
 ///
 /// # Returns
 /// A tuple containing the radial coordinates of the transformed function and its values.
-pub fn iqdht<T: HankelScalar, D>(
+pub fn iqdht<T: HankelScalar, D, S>(
     k: Array1<f64>,
-    f: &Array<T, D>,
+    f: &ArrayBase<S, D>,
     order: i32,
     axis: Axis,
 ) -> (Array1<f64>, Array<T, D>)
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    S: Data<Elem = T>,
 {
     let transformer = HankelTransform::new_from_k_grid(order, k);
     let f_transform = transformer.to_transform_k_nd(f, axis).unwrap();

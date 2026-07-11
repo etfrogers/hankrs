@@ -3,7 +3,9 @@ mod utils;
 use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
 use hankrs::HankelTransform;
-use ndarray::{Array, Array1, Axis, Dim, Dimension, Ix1};
+#[cfg(test)]
+use ndarray::ArrayView1;
+use ndarray::{Array, Array1, ArrayView, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
 use num_complex::Complex64;
@@ -28,7 +30,7 @@ static TRANSFORMERS: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
     ]
 });
 
-fn random_array_like<D: Dimension>(v: &Array<f64, D>) -> Array<f64, D> {
+fn random_array_like<D: Dimension>(v: ArrayView<f64, D>) -> Array<f64, D> {
     random_array(v.raw_dim())
 }
 
@@ -86,7 +88,7 @@ fn test_getters(transformer_zero_order: &HankelTransform) {
 
 #[rstest]
 fn test_errors(radius: Array1<f64>) {
-    let fun = random_array_like(&radius);
+    let fun = random_array_like(radius.view());
 
     let transformer = HankelTransform::new(0, 3.0, 256);
     assert!(transformer.to_original_r(&fun).is_err());
@@ -143,7 +145,14 @@ fn test_round_trip_r_interpolation(
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_r(&fun).unwrap();
     let reconstructed_func = transformer.to_original_r(&transform_func).unwrap();
-    assert_relative_eq_with_end_points(&reconstructed_func, &fun, 1e-4, 1e-3, 0.0, 2e-5);
+    assert_relative_eq_with_end_points(
+        reconstructed_func.view(),
+        fun.view(),
+        1e-4,
+        1e-3,
+        0.0,
+        2e-5,
+    );
 }
 
 #[apply(smooth_shapes)]
@@ -162,7 +171,14 @@ fn test_round_trip_k_interpolation(
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_k(&fun).unwrap();
     let reconstructed_func = transformer.to_original_k(&transform_func).unwrap();
-    assert_relative_eq_with_end_points(&reconstructed_func, &fun, 1e-4, 1e-3, 0.0, 2e-7);
+    assert_relative_eq_with_end_points(
+        reconstructed_func.view(),
+        fun.view(),
+        1e-4,
+        1e-3,
+        0.0,
+        2e-7,
+    );
 }
 
 #[apply(smooth_shapes)]
@@ -193,8 +209,8 @@ fn test_round_trip_with_interpolation(
         a_tol_body = 2e-4
     }
     assert_relative_eq_with_end_points(
-        &fun,
-        &reconstructed,
+        fun.view(),
+        reconstructed.view(),
         r_tol_body,
         r_tol_end,
         a_tol_body,
@@ -240,7 +256,7 @@ fn test_parsevals_theorem(
     let fun = radius.mapv(shape.f); // shape.f, nil, &t.radius)
     let intensity_before = fun.mapv(intensity);
     let energy_before = intensity_before.sum();
-    let ht = transformer.transform_matrix() * fun;
+    let ht = &transformer.transform_matrix() * fun;
     let intensity_after = ht.mapv(intensity);
     let energy_after = intensity_after.sum();
     assert_relative_eq!(energy_before, energy_after, max_relative = 1e-10);
@@ -255,11 +271,11 @@ fn intensity(v: f64) -> f64 {
 #[case("Top Hat", &generalised_top_hat)]
 fn test_energy_conservation(
     #[case] _shape_name: &str,
-    #[case] func: &dyn Fn(&Array1<f64>, f64, i32) -> Array1<f64>,
+    #[case] func: &dyn Fn(ArrayView1<f64>, f64, i32) -> Array1<f64>,
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
-    let integrate_over_r = |r: &Array1<f64>, y| -> f64 {
-        let integrand: Array1<f64> = 2.0 * PI * r * y;
+    let integrate_over_r = |r: ArrayView1<f64>, y| -> f64 {
+        let integrand: Array1<f64> = 2.0 * PI * &r * y;
         (0..(r.len() - 1))
             .map(|i| (r[i + 1] - r[i]) * (integrand[i + 1] + integrand[i]) / 2.0)
             .sum()
@@ -377,14 +393,10 @@ fn test_gaussian_2d(#[values(0, 1)] axis: usize, transformer_zero_order: &Hankel
     let mut dims_r = Array1::ones(2);
     dims_r[axis] = transformer_zero_order.radius().len();
     let a_reshaped = a.to_shape(dims_a.as_slice().unwrap()).unwrap();
-    let r_reshaped = transformer_zero_order
-        .radius()
-        .to_shape(dims_r.as_slice().unwrap())
-        .unwrap();
-    let kr_reshaped = transformer_zero_order
-        .kr()
-        .to_shape(dims_r.as_slice().unwrap())
-        .unwrap();
+    let r = transformer_zero_order.radius();
+    let r_reshaped = r.to_shape(dims_r.as_slice().unwrap()).unwrap();
+    let kr = transformer_zero_order.kr();
+    let kr_reshaped = kr.to_shape(dims_r.as_slice().unwrap()).unwrap();
     let f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
     let expected_ht = 2.0
         * PI
@@ -406,14 +418,10 @@ fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize, transformer_zero_order:
     dims_r[axis] = transformer_zero_order.radius().len();
     let a_reshaped: ndarray::ArrayBase<ndarray::CowRepr<'_, f64>, _> =
         a.to_shape(dims_a.as_slice().unwrap()).unwrap();
-    let r_reshaped = transformer_zero_order
-        .radius()
-        .to_shape(dims_r.as_slice().unwrap())
-        .unwrap();
-    let kr_reshaped = transformer_zero_order
-        .kr()
-        .to_shape(dims_r.as_slice().unwrap())
-        .unwrap();
+    let r = transformer_zero_order.radius();
+    let r_reshaped = r.to_shape(dims_r.as_slice().unwrap()).unwrap();
+    let kr = transformer_zero_order.kr();
+    let kr_reshaped = kr.to_shape(dims_r.as_slice().unwrap()).unwrap();
     let ht = 2.0
         * PI
         * (1.0 / (2.0 * a_reshaped.powi(2)))
@@ -496,7 +504,7 @@ fn test_debug_impl() {
 }
 
 /*
-fn _plot_stuff(x: &Array1<f64>, y1: &Array1<f64>, y2: &Array1<f64>, p: i32) {
+fn _plot_stuff(x: ArrayView1<f64>, y1: ArrayView1<f64>, y2: ArrayView1<f64>, p: i32) {
     let out_file_name = format!("graph{p}.png");
     use plotters::prelude::*;
     let root = BitMapBackend::new(&out_file_name, (1024, 768)).into_drawing_area();
@@ -618,9 +626,9 @@ fn test_round_trip_r_interpolation_2d(
     let amplitude = random_array(Dim(10));
     let func_1d = radius.mapv(shape.f);
     let func = if axis == 0 {
-        outer(&func_1d, &amplitude)
+        outer(func_1d.view(), amplitude.view())
     } else {
-        outer(&amplitude, &func_1d)
+        outer(amplitude.view(), func_1d.view())
     };
     let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
     let reconstructed_func = transformer
@@ -644,9 +652,9 @@ fn test_round_trip_r_interpolation_2d_complex(
     let amplitude = random_array(Dim(10)).mapv(|v| Complex64::new(v, 0.0));
     let func_1d = radius.mapv(shape.f).mapv(|v| Complex64::new(v, v));
     let func = if axis == 0 {
-        outer_complex(&func_1d, &amplitude)
+        outer_complex(func_1d.view(), amplitude.view())
     } else {
-        outer_complex(&amplitude, &func_1d)
+        outer_complex(amplitude.view(), func_1d.view())
     };
     let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
     let reconstructed_func = transformer
@@ -682,9 +690,9 @@ fn test_round_trip_k_interpolation_2d(
     let amplitude = random_array(Dim(10));
     let func_1d = &k_grid.mapv(shape.f);
     let func = if axis == 0 {
-        outer(&func_1d, &amplitude)
+        outer(func_1d.view(), amplitude.view())
     } else {
-        outer(&amplitude, &func_1d)
+        outer(amplitude.view(), func_1d.view())
     };
     let transform_func = transformer.to_transform_k_nd(&func, Axis(axis)).unwrap();
     let reconstructed_func = transformer
@@ -703,12 +711,18 @@ fn test_jinc2d(
     let transformer = &TRANSFORMERS[order_ind];
     let f = generalised_jinc(transformer.radius(), a, transformer.order());
     // using a range up to 2.0 to make error magnitude the same as 1D case.
-    let second_axis = &Array1::linspace(0.0, 2.0, two_d_size);
+    let second_axis = Array1::linspace(0.0, 2.0, two_d_size);
     let expected_ht = generalised_top_hat(transformer.frequency(), a, transformer.order());
     let (f_array, expected_ht_array) = if axis == 0 {
-        (outer(&f, &second_axis), outer(&expected_ht, &second_axis))
+        (
+            outer(f.view(), second_axis.view()),
+            outer(expected_ht.view(), second_axis.view()),
+        )
     } else {
-        (outer(&second_axis, &f), outer(&second_axis, &expected_ht))
+        (
+            outer(second_axis.view(), f.view()),
+            outer(second_axis.view(), expected_ht.view()),
+        )
     };
     let actual_ht = transformer.qdht(&f_array, Axis(axis));
     let error = (expected_ht_array).mean_abs_err(&actual_ht).unwrap();

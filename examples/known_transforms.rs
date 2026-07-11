@@ -1,15 +1,17 @@
 mod helper;
+
 use amos_bessel_rs::{bessel_j, bessel_k};
 use hankrs::HankelTransform;
 use hankrs::one_shot::{iqdht, qdht};
-use ndarray::{Array1, Axis};
+use helper::plot_1d_original_and_transform;
+use ndarray::{Array1, ArrayView1, Axis};
 use std::f64::consts::PI;
 
-fn generalised_top_hat(r: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
+fn generalised_top_hat(r: ArrayView1<f64>, a: f64, p: i32) -> Array1<f64> {
     r.mapv(|rad| if rad <= a { rad.powi(p) } else { 0.0 })
 }
 
-fn generalised_jinc(v: &Array1<f64>, a: f64, p: i32) -> Array1<f64> {
+fn generalised_jinc(v: ArrayView1<f64>, a: f64, p: i32) -> Array1<f64> {
     v.mapv(|val| {
         if val != 0.0 {
             a.powi(p + 1) * bessel_j(p as f64 + 1.0, 2.0 * PI * a * val).unwrap() / val
@@ -43,19 +45,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let expected_ht =
         kr_linear.mapv(|k: f64| 2.0 * PI * (1.0 / (2.0 * a * a)) * (-k * k / (4.0 * a * a)).exp());
 
-    helper::plot_1d_original_and_transform(
+    plot_1d_original_and_transform(
         "known_transforms_gaussian.png",
-        &radius,
-        &f,
+        radius.view(),
+        f.view(),
         "Gaussian function",
         "Radius /r",
         "Amplitude",
         0.0..3.0,
         0.0..1.05,
-        &kr_linear,
-        &expected_ht,
-        &kr,
-        &actual_ht,
+        kr_linear.view(),
+        expected_ht.view(),
+        kr.view(),
+        actual_ht.view(),
         "Analytical",
         "QDHT",
         "Hankel transform - Gaussian",
@@ -74,19 +76,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r_linear = Array1::linspace(0.0, 1.0, 1024);
     let expected_f = r_linear.mapv(|rad: f64| (-a * a * rad * rad).exp());
 
-    helper::plot_1d_original_and_transform(
+    plot_1d_original_and_transform(
         "known_transforms_inv_gaussian.png",
-        &kr2,
-        &ht,
+        kr2.view(),
+        ht.view(),
         "Hankel transform - Gaussian function",
         "Frequency /k",
         "Amplitude",
         0.0..50.0,
         0.0..0.4,
-        &r_linear,
-        &expected_f,
-        &r,
-        &actual_f,
+        r_linear.view(),
+        expected_f.view(),
+        r.view(),
+        actual_f.view(),
         "Analytical",
         "QDHT",
         "Original function after IQDHT",
@@ -114,28 +116,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a_val = 0.5;
     let r3 = Array1::linspace(0.0, 30.0, 1024);
     for (i, &order) in [0, 1, 4].iter().enumerate() {
-        let f = generalised_jinc(&r3, a_val, order);
+        let f = generalised_jinc(r3.view(), a_val, order);
         let (kr, actual_ht) = qdht(r3.clone(), &f, order, Axis(0));
         let v = kr.mapv(|k| k / (2.0 * PI));
 
         let v_linear = Array1::linspace(0.0, 1.5, 1024);
-        let expected_ht = generalised_top_hat(&v_linear, a_val, order);
+        let expected_ht = generalised_top_hat(v_linear.view(), a_val, order);
 
         let title_orig = format!("Generalised jinc function, order = {}", order);
         let title_trans = format!("Hankel transform - generalised top-hat, order = {}", order);
-        helper::plot_1d_original_and_transform(
+        plot_1d_original_and_transform(
             &format!("known_transforms_tophat_{}.png", order),
-            &r3,
-            &f,
+            r3.view(),
+            f.view(),
             &title_orig,
             "Radius /r",
             "Amplitude",
             0.0..30.0,
             ylims3[i].0.clone(),
-            &v_linear,
-            &expected_ht,
-            &v,
-            &actual_ht,
+            v_linear.view(),
+            expected_ht.view(),
+            v.view(),
+            actual_ht.view(),
             "Analytical",
             "QDHT",
             &title_trans,
@@ -158,29 +160,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (i, &order) in [0, 1, 4].iter().enumerate() {
         let transformer = HankelTransform::new(order, 2.0, 1024);
-        let f = generalised_top_hat(&transformer.radius(), a_val, order);
+        let f = generalised_top_hat(transformer.radius(), a_val, order);
         let actual_ht = transformer.qdht(&f, Axis(0));
         let v = transformer.frequency();
 
         let v_linear = Array1::linspace(0.0, transformer.max_frequency(), 1024);
-        let expected_ht = generalised_jinc(&v_linear, a_val, order);
+        let expected_ht = generalised_jinc(v_linear.view(), a_val, order);
 
-        let f_orig_linear = generalised_top_hat(&r4, a_val, order);
+        let f_orig_linear = generalised_top_hat(r4.view(), a_val, order);
         let title_orig = format!("Generalised top-hat function, order = {}", order);
         let title_trans = format!("Hankel transform - generalised jinc, order = {}", order);
-        helper::plot_1d_original_and_transform(
+        plot_1d_original_and_transform(
             &format!("known_transforms_jinc_{}.png", order),
-            &r4,
-            &f_orig_linear,
+            r4.view(),
+            f_orig_linear.view(),
             &title_orig,
             "Radius /r",
             "Amplitude",
             0.0..2.0,
             ylims4[i].0.clone(),
-            &v_linear,
-            &expected_ht,
-            &v,
-            &actual_ht,
+            v_linear.view(),
+            expected_ht.view(),
+            v.view(),
+            actual_ht.view(),
             "Analytical",
             "QDHT",
             &title_trans,
@@ -208,19 +210,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r_linear = Array1::linspace(0.0, 20.0, 1024);
     let f5_linear = r_linear.mapv(|r| 1.0 / (r * r + a5 * a5));
 
-    helper::plot_1d_original_and_transform(
+    plot_1d_original_and_transform(
         "known_transforms_k0.png",
-        &r_linear,
-        &f5_linear,
+        r_linear.view(),
+        f5_linear.view(),
         "1/(r^2 + a^2)",
         "Radius /r",
         "Amplitude",
         0.0..20.0,
         -0.05..1.05,
-        &kr_linear,
-        &expected_ht,
-        &kr_grid,
-        &actual_ht,
+        kr_linear.view(),
+        expected_ht.view(),
+        kr_grid.view(),
+        actual_ht.view(),
         "Analytical",
         "QDHT",
         "Hankel transform - 2pi K0(ak)",

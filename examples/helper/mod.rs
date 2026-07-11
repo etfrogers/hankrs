@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, ArrayView1, ArrayView2};
 use plotters::prelude::*;
 use std::{fs, ops::Range};
 
@@ -10,15 +10,15 @@ pub fn get_image_path(filename: &str) -> String {
     format!("{}/{}", image_dir, filename)
 }
 
-pub fn gauss1d(x: &Array1<f64>, x0: f64, fwhm: f64) -> Array1<f64> {
+pub fn gauss1d(x: ArrayView1<f64>, x0: f64, fwhm: f64) -> Array1<f64> {
     let factor = -2.0 * 2.0f64.ln() / (fwhm * fwhm);
     x.mapv(|val| (factor * (val - x0).powi(2)).exp())
 }
 
 pub fn plot_1d(
     filename: &str,
-    x: &Array1<f64>,
-    y: &Array1<f64>,
+    x: ArrayView1<f64>,
+    y: ArrayView1<f64>,
     title: &str,
     xlabel: &str,
     ylabel: &str,
@@ -55,10 +55,10 @@ pub fn plot_1d(
 
 pub fn plot_1d_compare(
     filename: &str,
-    x1: &Array1<f64>,
-    y1: &Array1<f64>,
-    x2: &Array1<f64>,
-    y2: &Array1<f64>,
+    x1: ArrayView1<f64>,
+    y1: ArrayView1<f64>,
+    x2: ArrayView1<f64>,
+    y2: ArrayView1<f64>,
     label1: &str,
     label2: &str,
     title: &str,
@@ -117,17 +117,17 @@ pub fn plot_1d_compare(
 
 pub fn plot_1d_original_and_transform(
     filename: &str,
-    x_orig: &Array1<f64>,
-    y_orig: &Array1<f64>,
+    x_orig: ArrayView1<f64>,
+    y_orig: ArrayView1<f64>,
     title_orig: &str,
     xlabel_orig: &str,
     ylabel_orig: &str,
     x_range_orig: std::ops::Range<f64>,
     y_range_orig: std::ops::Range<f64>,
-    x1_trans: &Array1<f64>,
-    y1_trans: &Array1<f64>,
-    x2_trans: &Array1<f64>,
-    y2_trans: &Array1<f64>,
+    x1_trans: ArrayView1<f64>,
+    y1_trans: ArrayView1<f64>,
+    x2_trans: ArrayView1<f64>,
+    y2_trans: ArrayView1<f64>,
     label1: &str,
     label2: &str,
     title_trans: &str,
@@ -209,9 +209,9 @@ pub fn plot_1d_original_and_transform(
 
 pub fn imagesc(
     filename: &str,
-    x: &Array1<f64>,
-    y: &Array1<f64>,
-    z: &Array2<f64>,
+    x: ArrayView1<f64>,
+    y: ArrayView1<f64>,
+    z: ArrayView2<f64>,
     title: &str,
     xlabel: &str,
     ylabel: &str,
