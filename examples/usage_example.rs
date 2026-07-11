@@ -133,12 +133,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Propagate the beam - vectorised approach
     // We can also propagate it entirely within Hankel space without having to drop out in a loop!
-    // By creating a 2D array of the wave propagation, we can apply the inverse QDHT 
+    // By creating a 2D array of the wave propagation, we can apply the inverse QDHT
     // down the 0th axis in a single vectorized shot.
     let ekr_hz_vec = Array2::from_shape_fn((nr, nz), |(i, j)| {
         ekr_h[i] * Complex64::new(0.0, kz[i] * z[j]).exp()
     });
-    
+
     let er_hz_vec = transformer.iqdht(&ekr_hz_vec, Axis(0));
     let erz_vec = transformer.to_original_r_nd(&er_hz_vec, Axis(0)).unwrap();
 

@@ -1,13 +1,13 @@
 mod helper;
+use amos_bessel_rs::bessel_j;
 use hankrs::one_shot::qdht;
 use ndarray::{Array1, Axis};
-use amos_bessel_rs::bessel_j;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- PART 1: Jinc to Top-Hat ---
     // Create a grid for r points and calculate the jinc function.
     let r = Array1::linspace(0.0, 100.0, 1024);
-    
+
     // The calculation fails at r = 0, so we have to set that manually to the limit of 1/2.
     let f = r.mapv(|rad| {
         if rad == 0.0 {
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a simple top-hat function
     let r2 = Array1::linspace(0.0, 5.0, 200);
     let f2 = r2.mapv(|rad| if rad < 1.0 { 1.0 } else { 0.0 });
-    
+
     helper::plot_1d(
         "one_shot_example_tophat.png",
         &r2,
