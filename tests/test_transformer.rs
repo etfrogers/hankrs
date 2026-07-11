@@ -6,12 +6,14 @@ use hankrs::HankelTransform;
 use ndarray::{Array, Array1, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num::pow::Pow;
+use num_complex::Complex64;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
 use std::{f64::consts::PI, fmt::Debug, mem::MaybeUninit, sync::LazyLock};
 use utils::{
-    assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat, outer, radius,
+    assert_relative_eq_with_end_points, generalised_jinc, generalised_top_hat, outer,
+    outer_complex, radius,
 };
 
 use crate::utils::assert_arrays_equal;
@@ -625,6 +627,43 @@ fn test_round_trip_r_interpolation_2d(
         .to_original_r_nd(&transform_func, Axis(axis))
         .unwrap();
     assert_arrays_equal(&func, &reconstructed_func, 1e-8, 1e-4);
+}
+
+#[apply(smooth_shapes)]
+#[rstest]
+fn test_round_trip_r_interpolation_2d_complex(
+    shape: Shape,
+    radius: Array1<f64>,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+    #[values(0, 1)] axis: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+
+    // the function must be smoothish for interpolation
+    // to work. Random every point doesn't work
+    let amplitude = random_array(Dim(10)).mapv(|v| Complex64::new(v, 0.0));
+    let func_1d = radius.mapv(shape.f).mapv(|v| Complex64::new(v, v));
+    let func = if axis == 0 {
+        outer_complex(&func_1d, &amplitude)
+    } else {
+        outer_complex(&amplitude, &func_1d)
+    };
+    let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
+    let reconstructed_func = transformer
+        .to_original_r_nd(&transform_func, Axis(axis))
+        .unwrap();
+    assert_arrays_equal(
+        &func.mapv(|v| v.re),
+        &reconstructed_func.mapv(|v| v.re),
+        1e-8,
+        1e-4,
+    );
+    assert_arrays_equal(
+        &func.mapv(|v| v.im),
+        &reconstructed_func.mapv(|v| v.im),
+        1e-8,
+        1e-4,
+    );
 }
 
 #[apply(smooth_shapes)]
