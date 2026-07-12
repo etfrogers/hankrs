@@ -10,7 +10,7 @@ authors = ["Edward Rogers <etfrogers@hotmail.com>"]
 categories = ["science", "mathematics"]
 
 [dependencies]
-ndarray = { version = "0.16", features = ["approx"] }
+ndarray = { version = "0.16", features = ["approx", "blas"] }
 ndarray-stats = "0.6.0"
 conv = "0.3.3"
 num-complex = "0.4.6"
@@ -23,6 +23,13 @@ bessel-zeros = "0.1.1"
 num = "0.4.3"
 rstest_reuse = "0.7.0"
 
+# 1. Use Apple Accelerate when testing on a Mac
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+blas-src = { version = "0.8", features = ["accelerate"] }
+
+# 2. Use OpenBLAS when testing on Linux or Windows (like GitHub Actions)
+[target.'cfg(not(target_os = "macos"))'.dev-dependencies]
+blas-src = { version = "0.8", features = ["openblas"] }
 
 [dev-dependencies]
 rstest = "0.26.1"

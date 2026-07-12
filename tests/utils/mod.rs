@@ -1,3 +1,4 @@
+extern crate blas_src;
 use std::f64::{INFINITY, consts::PI};
 
 use amos_bessel_rs::bessel_j;
