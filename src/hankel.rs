@@ -314,18 +314,28 @@ impl HankelTransform {
         let mut t = Array2::<f64>::zeros((n_points, n_points));
 
         Zip::indexed(&mut t).par_for_each(|(i, j), t_val| {
-            // Grab the 1D values needed for this specific cell
-            let a_i = alpha[i];
-            let a_j = alpha[j];
-            let jp1_i = jp1[i];
-            let jp1_j = jp1[j];
+            // Only evaluate the expensive Bessel function for the upper triangle and diagonal
+            if i <= j {
+                // Grab the 1D values needed for this specific cell
+                let a_i = alpha[i];
+                let a_j = alpha[j];
+                let jp1_i = jp1[i];
+                let jp1_j = jp1[j];
 
-            // Evaluate the Bessel function directly for this coordinate
-            let jp_val = bessel_j(order, (a_i * a_j) / s).unwrap();
+                // Evaluate the Bessel function directly for this coordinate
+                let jp_val = bessel_j(order, (a_i * a_j) / s).unwrap();
 
-            // Write directly into the final T matrix
-            *t_val = 2.0 * jp_val / (jp1_i * jp1_j * s);
+                // Write directly into the final T matrix
+                *t_val = 2.0 * jp_val / (jp1_i * jp1_j * s);
+            }
         });
+        // MIRROR to the lower triangle sequentially
+        // Memory copying is instantaneous compared to evaluating the AMOS library
+        for i in 0..n_points {
+            for j in 0..i {
+                t[[i, j]] = t[[j, i]];
+            }
+        }
 
         let jr: Array1<_> = jp1.clone() / max_radius;
         let jv: Array1<_> = jp1 / max_v;
