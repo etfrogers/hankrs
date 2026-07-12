@@ -10,7 +10,7 @@ authors = ["Edward Rogers <etfrogers@hotmail.com>"]
 categories = ["science", "mathematics"]
 
 [dependencies]
-ndarray = { version = "0.16", features = ["approx", "blas"] }
+ndarray = { version = "0.16", features = ["approx", "blas", "rayon"] }
 ndarray-stats = "0.6.0"
 conv = "0.3.3"
 num-complex = "0.4.6"

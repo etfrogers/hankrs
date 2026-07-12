@@ -1,7 +1,8 @@
 use approx::{AbsDiffEq, RelativeEq};
+use ndarray::Zip;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayView, ArrayView2, Axis, Data, Dim, DimAdd, Dimension,
-    Ix1, IxDyn, NewAxis, RemoveAxis, s,
+    Ix1, IxDyn, RemoveAxis, s,
 };
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
@@ -308,17 +309,24 @@ impl HankelTransform {
         let max_kr = 2.0 * PI * max_v;
         let s = alpha_n1;
 
-        // Calculate hankel matrix and vectors
-        let alpha_row = alpha.to_shape((n_points, 1)).unwrap();
-        let alpha_col: Array2<_> = alpha.slice(s![NewAxis, ..]).to_owned();
-        let alpha_matrix = alpha_row.dot(&alpha_col);
-        let jp: Array2<_> = alpha_matrix.map(|a| bessel_j(order, a / s).unwrap());
         let jp1: Array1<_> = alpha.map(|a| bessel_j(order + 1, *a).unwrap().abs());
 
-        let jp1_row: Array2<_> = jp1.slice(s![.., NewAxis]).to_owned();
-        let jp1_col: Array2<_> = jp1.slice(s![NewAxis, ..]).to_owned();
+        let mut t = Array2::<f64>::zeros((n_points, n_points));
 
-        let t: Array2<_> = 2.0 * jp / (jp1_row.dot(&jp1_col) * s);
+        Zip::indexed(&mut t).par_for_each(|(i, j), t_val| {
+            // Grab the 1D values needed for this specific cell
+            let a_i = alpha[i];
+            let a_j = alpha[j];
+            let jp1_i = jp1[i];
+            let jp1_j = jp1[j];
+
+            // Evaluate the Bessel function directly for this coordinate
+            let jp_val = bessel_j(order, (a_i * a_j) / s).unwrap();
+
+            // Write directly into the final T matrix
+            *t_val = 2.0 * jp_val / (jp1_i * jp1_j * s);
+        });
+
         let jr: Array1<_> = jp1.clone() / max_radius;
         let jv: Array1<_> = jp1 / max_v;
 
