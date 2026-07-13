@@ -20,7 +20,7 @@ use num_complex::Complex;
 
 /// A trait for scalar types that can be processed by the Hankel transform.
 /// It abstracts over basic array arithmetic and matrix multiplications.
-pub trait HankelScalar: Clone + Zero {
+pub trait HankelScalar: Clone + Zero + Send + Sync {
     /// Multiplies a purely real transform matrix with a vector of this scalar type.
     fn dot_real_matrix(matrix: ArrayView2<f64>, vector: ArrayView1<Self>) -> Array1<Self>;
 
@@ -744,8 +744,7 @@ impl HankelTransform {
     }
 }
 
-pub fn perms<D: Dimension>(axis: Axis) -> (D, D) {
-    let ndim = D::NDIM.expect("Dimension must be fixed");
+fn perms<D: Dimension>(axis: Axis, ndim: usize) -> (D, D) {
     let mut forward_perm: Vec<usize> = (0..ndim).collect();
     forward_perm.remove(axis.index());
     forward_perm.insert(0, axis.index());
@@ -772,7 +771,7 @@ where
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
 {
     let (y0, inverse_perms) = if axis != Axis(0) {
-        let (forward_perms, inverse_perms) = perms::<D>(axis);
+        let (forward_perms, inverse_perms) = perms::<D>(axis, y0.ndim());
         let y0_ = y0.permuted_axes(forward_perms);
 
         (y0_, Some(inverse_perms))
