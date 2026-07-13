@@ -1,11 +1,13 @@
 use approx::{AbsDiffEq, RelativeEq};
 use ndarray::Zip;
+use ndarray::parallel::prelude::*;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayView, ArrayView2, Axis, Data, Dim, DimAdd, Dimension,
     Ix1, IxDyn, RemoveAxis, s,
 };
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
+use rayon::prelude::*;
 use std::fmt::Display;
 use std::{f64::consts::PI, fmt::Debug};
 use thiserror::Error;
@@ -695,14 +697,19 @@ impl HankelTransform {
     {
         let mut transform = Array::zeros(f.dim());
 
-        for (mut transform_line, fr_line) in
-            transform.lanes_mut(axis).into_iter().zip(f.lanes(axis))
-        {
-            let scaled_line = T::div_real_array(fr_line, scale_factor_input);
-            let mut transformed = T::dot_real_matrix(self.t.view(), scaled_line.view());
-            T::mul_real_array_assign(&mut transformed, scale_factor_output);
-            transform_line.assign(&transformed);
-        }
+        // 1. Swap into_iter() for into_par_iter() on both lanes
+        // 2. Swap the for-loop for .for_each()
+        transform
+            .lanes_mut(axis)
+            .into_iter() // 1. Start as a normal sequential iterator
+            .zip(f.lanes(axis)) // 2. Zip them sequentially
+            .par_bridge() // 3. MAGIC: Hand the sequential pipeline over to Rayon's thread pool
+            .for_each(|(mut transform_line, fr_line)| {
+                let scaled_line = T::div_real_array(fr_line, scale_factor_input);
+                let mut transformed = T::dot_real_matrix(self.t.view(), scaled_line.view());
+                T::mul_real_array_assign(&mut transformed, scale_factor_output);
+                transform_line.assign(&transformed);
+            });
         transform
     }
 
