@@ -39,6 +39,9 @@ jobs:
       - name: Build docs
         run: cargo doc --no-deps
 
+      - name: Run release tests # will run again below to get coverage stats, but this gets us to fail fast if tests fail
+        run: cargo test --release
+
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
