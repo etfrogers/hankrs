@@ -6,7 +6,9 @@ use ndarray::{
 };
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
+use std::fmt::Display;
 use std::{f64::consts::PI, fmt::Debug};
+use thiserror::Error;
 
 use amos_bessel_rs::bessel_j;
 use bessel_zeros::{BesselFunType, bessel_zeros};
@@ -420,7 +422,7 @@ impl HankelTransform {
     pub fn to_transform_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, &str> {
+    ) -> Result<Array1<T>, InterpError> {
         self.to_transform_r_nd(function, Axis(0))
     }
 
@@ -439,17 +441,18 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, &str>
+    ) -> Result<Array<T, D>, InterpError>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(r_grid) = self.original_radial_grid() {
             Ok(T::spline(r_grid, function.view(), self.r.view(), axis))
         } else {
-            Err(
-                "Attempted to interpolate onto transform radial grid on HankelTransform \
-                object that was not constructed with a radial grid",
-            )
+            Err(InterpError {
+                message: "Attempted to interpolate onto transform radial grid on HankelTransform \
+                    object that was not constructed with a radial grid"
+                    .to_string(),
+            })
         }
     }
 
@@ -471,7 +474,7 @@ impl HankelTransform {
     pub fn to_original_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, &str> {
+    ) -> Result<Array1<T>, InterpError> {
         self.to_original_r_nd(function, Axis(0))
     }
 
@@ -490,7 +493,7 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, &str>
+    ) -> Result<Array<T, D>, InterpError>
     where
         D: Dimension + RemoveAxis,
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
@@ -499,10 +502,11 @@ impl HankelTransform {
         if let Some(r_grid) = self.original_radial_grid() {
             Ok(T::spline(self.r.view(), function.view(), r_grid, axis))
         } else {
-            Err(
-                "Attempted to interpolate onto original_radial_grid on HankelTransform \
-                object that was not constructed with a r_grid",
-            )
+            Err(InterpError {
+                message: "Attempted to interpolate onto original_radial_grid on HankelTransform \
+                    object that was not constructed with a r_grid"
+                    .to_string(),
+            })
         }
     }
 
@@ -526,7 +530,7 @@ impl HankelTransform {
     pub fn to_transform_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, &str> {
+    ) -> Result<Array1<T>, InterpError> {
         self.to_transform_k_nd(function, Axis(0))
     }
 
@@ -545,7 +549,7 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, &str>
+    ) -> Result<Array<T, D>, InterpError>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
         S: Data<Elem = T>,
@@ -554,10 +558,11 @@ impl HankelTransform {
         if let Some(k_grid) = self.original_k_grid() {
             Ok(T::spline(k_grid, function.view(), self.kr.view(), axis))
         } else {
-            Err(
-                "Attempted to interpolate onto transform k grid on HankelTransform \
-                object that was not constructed with a k_grid",
-            )
+            Err(InterpError {
+                message: "Attempted to interpolate onto transform k grid on HankelTransform \
+                    object that was not constructed with a k_grid"
+                    .to_string(),
+            })
         }
     }
 
@@ -579,7 +584,7 @@ impl HankelTransform {
     pub fn to_original_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, &str> {
+    ) -> Result<Array1<T>, InterpError> {
         self.to_original_k_nd(function, Axis(0))
     }
 
@@ -598,7 +603,7 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, &str>
+    ) -> Result<Array<T, D>, InterpError>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
         D: Dimension + RemoveAxis,
@@ -607,10 +612,11 @@ impl HankelTransform {
         if let Some(k_grid) = self.original_k_grid() {
             Ok(T::spline(self.kr.view(), function.view(), k_grid, axis))
         } else {
-            Err(
-                "Attempted to interpolate onto original_k_grid on HankelTransform \
-                object that was not constructed with a k grid",
-            )
+            Err(InterpError {
+                message: "Attempted to interpolate onto original_k_grid on HankelTransform \
+                    object that was not constructed with a k grid"
+                    .to_string(),
+            })
         }
     }
 
@@ -780,4 +786,17 @@ where
         result = result.permuted_axes(inverse_perms.unwrap()).to_owned();
     }
     result
+}
+
+/// An error that occurs when trying to interpolate onto a transform grid (k or r)
+/// on a HankelTransform object that was not constructed with a such a grid.
+#[derive(Debug, Clone, Error, Default)]
+pub struct InterpError {
+    message: String,
+}
+
+impl Display for InterpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error trying to interpolate: {}", self.message)
+    }
 }
