@@ -2,15 +2,17 @@ mod helper;
 use amos_bessel_rs::bessel_j;
 use approx::assert_abs_diff_eq;
 use hankrs::HankelTransform;
-use ndarray::{Array1, Axis};
+use ndarray::{Array1, ArrayView1, Axis};
 use std::f64::consts::PI;
 
-fn sinc(x: &Array1<f64>) -> Array1<f64> {
+use crate::helper::{plot_1d, plot_1d_compare};
+
+fn sinc(x: ArrayView1<f64>) -> Array1<f64> {
     x.mapv(|val| if val == 0.0 { 1.0 } else { val.sin() / val })
 }
 
 /// Equation 12 of Guizar
-fn hankel_transform_of_sinc(v: &Array1<f64>, gamma: f64, p: i32) -> Array1<f64> {
+fn hankel_transform_of_sinc(v: ArrayView1<f64>, gamma: f64, p: i32) -> Array1<f64> {
     v.mapv(|val| {
         if val < gamma {
             val.powi(p) * (p as f64 * PI / 2.0).cos()
@@ -35,13 +37,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let transformer = HankelTransform::new(p, 3.0, 256);
         let gamma = 5.0;
         let r = transformer.radius();
-        let func = sinc(&r.mapv(|rad| 2.0 * PI * gamma * rad));
+        let func = sinc(r.mapv(|rad| 2.0 * PI * gamma * rad).view());
         let v = transformer.kr().mapv(|k| k / (2.0 * PI));
-        let expected_ht = hankel_transform_of_sinc(&v, gamma, p);
+        let expected_ht = hankel_transform_of_sinc(v.view(), gamma, p);
         let ht = transformer.qdht(&func, Axis(0));
 
         let v_linear = Array1::linspace(0.0, 10.0, 1024);
-        let expected_ht_linear = hankel_transform_of_sinc(&v_linear, gamma, p);
+        let expected_ht_linear = hankel_transform_of_sinc(v_linear.view(), gamma, p);
 
         let ht_max = ht.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let dynamical_error = ht
@@ -51,12 +53,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Array1<f64>>();
 
         let title = format!("Hankel Transform, p={}", p);
-        helper::plot_1d_compare(
+        plot_1d_compare(
             &format!("lit_comp_sinc_ht_{}.png", p),
-            &v_linear,
-            &expected_ht_linear,
-            &v,
-            &ht,
+            v_linear.view(),
+            expected_ht_linear.view(),
+            v.view(),
+            ht.view(),
             "Analytical",
             "QDHT",
             &title,
@@ -66,10 +68,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             -0.05..0.05,
         )?;
 
-        helper::plot_1d(
+        plot_1d(
             &format!("lit_comp_sinc_error_{}.png", p),
-            &v,
-            &dynamical_error,
+            v.view(),
+            dynamical_error.view(),
             "Dynamical error",
             "Frequency /v",
             "Error /dB",
@@ -111,12 +113,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let retrieved_func = transformer.iqdht(&ht, Axis(0));
 
     let v = transformer.kr().mapv(|k| k / (2.0 * PI));
-    helper::plot_1d_compare(
+    plot_1d_compare(
         "lit_comp_fig3_ht.png",
-        &v_linear,
-        &expected_ht_linear,
-        &v,
-        &ht,
+        v_linear.view(),
+        expected_ht_linear.view(),
+        v.view(),
+        ht.view(),
         "Analytical",
         "QDHT",
         &format!("Hankel transform f_2(v), order {}", p),
@@ -129,12 +131,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r_linear = Array1::linspace(0.0, 2.0, 1024);
     let func_linear = r_linear.mapv(|rad| if rad <= a { rad.powi(p) } else { 0.0 });
 
-    helper::plot_1d_compare(
+    plot_1d_compare(
         "lit_comp_fig3_retrieved.png",
-        &r_linear,
-        &func_linear,
-        &r,
-        &retrieved_func,
+        r_linear.view(),
+        func_linear.view(),
+        r.view(),
+        retrieved_func.view(),
         "Analytical",
         "QDHT+iQDHT",
         "Round-trip QDHT vs analytical function",

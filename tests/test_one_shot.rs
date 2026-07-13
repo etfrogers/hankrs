@@ -20,10 +20,10 @@ fn test_jinc_oneshot(
     #[values(1.0, 0.7, 0.1)] a: f64,
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
-    let f = generalised_jinc(&radius, a, order);
+    let f = generalised_jinc(radius.view(), a, order);
     let (kr, actual_ht) = qdht(radius, &f, order, Axis(0));
     let v = kr / (2.0 * PI);
-    let expected_ht = generalised_top_hat(&v, a, order);
+    let expected_ht = generalised_top_hat(v.view(), a, order);
     let error = expected_ht.mean_abs_err(&actual_ht).unwrap();
     assert!(error < 1e-3);
 }
@@ -36,20 +36,20 @@ fn test_jinc2d_oneshot(
     #[values(0, 1)] axis: usize,
     #[values(1, 35, 27)] two_d_size: usize,
 ) {
-    let f = generalised_jinc(&radius, a, order);
+    let f = generalised_jinc(radius.view(), a, order);
     let second_axis = Array1::linspace(0.0, 6.0, two_d_size);
     let f_array = if axis == 0 {
-        outer(&f, &second_axis)
+        outer(f.view(), second_axis.view())
     } else {
-        outer(&second_axis, &f)
+        outer(second_axis.view(), f.view())
     };
     let (kr, actual_ht) = qdht(radius, &f_array, order, Axis(axis));
     let v = kr / (2.0 * PI);
-    let expected_ht = generalised_top_hat(&v, a, order);
+    let expected_ht = generalised_top_hat(v.view(), a, order);
     let expected_ht_array = if axis == 0 {
-        outer(&expected_ht, &second_axis)
+        outer(expected_ht.view(), second_axis.view())
     } else {
-        outer(&second_axis, &expected_ht)
+        outer(second_axis.view(), expected_ht.view())
     };
     let error = expected_ht_array.mean_abs_err(&actual_ht).unwrap();
     // multiply tolerance to allow for the larger values caused;
@@ -63,10 +63,10 @@ fn test_top_hat(
     #[values(1.0, 1.5, 0.1)] a: f64,
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
-    let f = generalised_top_hat(&radius, a, order);
+    let f = generalised_top_hat(radius.view(), a, order);
     let (kr, actual_ht) = qdht(radius, &f, order, Axis(0));
     let v = kr / (2.0 * PI);
-    let expected_ht = generalised_jinc(&v, a, order);
+    let expected_ht = generalised_jinc(v.view(), a, order);
     let error = expected_ht.mean_abs_err(&actual_ht).unwrap();
     assert!(error < 1e-3);
 }
@@ -163,11 +163,11 @@ fn test_jinc_equivalence(
     #[values(0, 1, 2, 3, 4)] order: i32,
     radius: Array1<f64>,
 ) {
-    let f = generalised_jinc(&radius, a, order);
+    let f = generalised_jinc(radius.view(), a, order);
     let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0));
 
     let transformer = HankelTransform::new_from_r_grid(order, radius);
-    let f_t = generalised_jinc(&transformer.radius(), a, order);
+    let f_t = generalised_jinc(transformer.radius(), a, order);
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-8, 1e-5);
 }
@@ -179,10 +179,10 @@ fn test_top_hat_equivalence(
     #[values(0, 1, 2, 3, 4)] order: i32,
     radius: Array1<f64>,
 ) {
-    let f = generalised_top_hat(&radius, a, order);
+    let f = generalised_top_hat(radius.view(), a, order);
     let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0));
     let transformer = HankelTransform::new_from_r_grid(order, radius);
-    let f_t = generalised_top_hat(&transformer.radius(), a, order);
+    let f_t = generalised_top_hat(transformer.radius(), a, order);
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-8, 1e-5);
 }
