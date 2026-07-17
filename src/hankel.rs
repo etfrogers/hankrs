@@ -8,6 +8,8 @@ use ndarray::{
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
 use rayon::prelude::*;
+use roots::{SimpleConvergency, find_root_brent};
+use std::f64::consts::FRAC_PI_2;
 use std::fmt::Display;
 use std::{f64::consts::PI, fmt::Debug};
 use thiserror::Error;
@@ -254,7 +256,14 @@ impl HankelTransform {
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
-        Self::build(order, n_points, Some(max_radius), None, None)
+        Self::build(
+            order,
+            n_points,
+            Some(max_radius),
+            None,
+            None,
+            TransformType::Polar,
+        )
     }
 
     /// Create a new `HankelTransform` from an existing radial grid.
@@ -266,7 +275,14 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
-        Self::build(order, radial_grid.len(), None, Some(radial_grid), None)
+        Self::build(
+            order,
+            radial_grid.len(),
+            None,
+            Some(radial_grid),
+            None,
+            TransformType::Polar,
+        )
     }
 
     /// Create a new `HankelTransform` from an existing `k`-space grid.
@@ -278,7 +294,69 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
-        Self::build(order, k_grid.len(), None, None, Some(k_grid))
+        Self::build(
+            order,
+            k_grid.len(),
+            None,
+            None,
+            Some(k_grid),
+            TransformType::Polar,
+        )
+    }
+
+    /// Create a new spherical `HankelTransform` by explicitly specifying the maximum radius and number of points.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order `p`.
+    /// * `max_radius` - Radial extent of the transform `r_max`.
+    /// * `n_points` - Number of sample points `N`.
+    pub fn new_spherical(order: i32, max_radius: f64, n_points: usize) -> Self {
+        Self::build(
+            order,
+            n_points,
+            Some(max_radius),
+            None,
+            None,
+            TransformType::Spherical,
+        )
+    }
+
+    /// Create a new spherical `HankelTransform` from an existing radial grid.
+    ///
+    /// This uses the length of the grid as the number of points, and the maximum value
+    /// of the grid as the maximum radius.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order `p`.
+    /// * `radial_grid` - The radial grid that will be used to sample input functions.
+    pub fn new_spherical_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
+        Self::build(
+            order,
+            radial_grid.len(),
+            None,
+            Some(radial_grid),
+            None,
+            TransformType::Spherical,
+        )
+    }
+
+    /// Create a new spherical `HankelTransform` from an existing `k`-space grid.
+    ///
+    /// This uses the length of the grid as the number of points. The maximum radius
+    /// is determined dynamically from the maximum value of the `k`-grid.
+    ///
+    /// # Arguments
+    /// * `order` - Transform order `p`.
+    /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
+    pub fn new_spherical_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
+        Self::build(
+            order,
+            k_grid.len(),
+            None,
+            None,
+            Some(k_grid),
+            TransformType::Spherical,
+        )
     }
 
     fn build(
@@ -287,9 +365,18 @@ impl HankelTransform {
         max_radius: Option<f64>,
         original_radial_grid: Option<Array1<f64>>,
         original_k_grid: Option<Array1<f64>>,
+        transform_type: TransformType,
     ) -> Self {
+        let zero_fun: fn(i32, usize) -> Array1<f64> = match transform_type {
+            TransformType::Polar => |order: i32, n_points| {
+                Array1::from_vec(bessel_zeros(&BesselFunType::J, order, n_points, 1e-6))
+            },
+            TransformType::Spherical => {
+                |order: i32, n_points: usize| spherical_jn_zeros(order, n_points)
+            }
+        };
         // Calculate N+1 roots must be calculated before max_radius can be derived from k_grid
-        let alpha = Array1::from_vec(bessel_zeros(&BesselFunType::J, order, n_points + 1, 1e-6));
+        let alpha = zero_fun(order, n_points + 1);
 
         let alpha_n1 = alpha[n_points];
         let alpha = alpha.slice(s![0..n_points]).to_owned();
@@ -313,22 +400,36 @@ impl HankelTransform {
         let max_kr = 2.0 * PI * max_v;
         let s = alpha_n1;
 
-        let jp1: Array1<_> = alpha.map(|a| bessel_j(order + 1, *a).unwrap().abs());
+        let (jp1, jr, jv): (Array1<_>, Array1<_>, Array1<_>) = match transform_type {
+            TransformType::Polar => {
+                let jp1 = alpha.map(|a| bessel_j(order + 1, *a).unwrap().abs());
+                (jp1.clone(), jp1.clone() / max_radius, jp1 / max_v)
+            }
+            TransformType::Spherical => {
+                let jp1 = alpha.map(|a| spherical_jn((order + 1) as f64, *a).abs());
+                (
+                    jp1.clone(),
+                    jp1.clone() / max_radius,
+                    jp1 * (max_radius.powi(2) * (PI / (2.0 * s.powi(3))).sqrt()),
+                )
+            }
+        };
 
         let mut t = Array2::<f64>::zeros((n_points, n_points));
-
         Zip::indexed(&mut t).par_for_each(|(i, j), t_val| {
             // Only evaluate the expensive Bessel function for the upper triangle and diagonal
             if i <= j {
-                // Grab the 1D values needed for this specific cell
                 let a_i = alpha[i];
                 let a_j = alpha[j];
                 let jp1_i = jp1[i];
                 let jp1_j = jp1[j];
 
-                // Evaluate the Bessel function directly for this coordinate
-                let jp_val = bessel_j(order, (a_i * a_j) / s).unwrap();
-
+                let jp_val = match transform_type {
+                    TransformType::Polar => bessel_j(order, (a_i * a_j) / s).unwrap(),
+                    TransformType::Spherical => {
+                        spherical_jn(order as f64, (a_i * a_j) / s) / (2.0 * n_points as f64).sqrt()
+                    }
+                };
                 // Write directly into the final T matrix
                 *t_val = 2.0 * jp_val / (jp1_i * jp1_j * s);
             }
@@ -340,9 +441,6 @@ impl HankelTransform {
                 t[[i, j]] = t[[j, i]];
             }
         }
-
-        let jr: Array1<_> = jp1.clone() / max_radius;
-        let jv: Array1<_> = jp1 / max_v;
 
         Self {
             order,
@@ -805,4 +903,53 @@ impl Display for InterpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Error trying to interpolate: {}", self.message)
     }
+}
+
+enum TransformType {
+    Polar,
+    Spherical,
+}
+
+// adapted from SciPy Cookbook https://scipy-cookbook.readthedocs.io/items/SphericalBesselZeros.html
+pub(super) fn spherical_jn_zeros(order: i32, n_points: usize) -> Array1<f64> {
+    let mut zerosj = Array2::<f64>::zeros((order as usize + 1, n_points));
+    for (i, v) in zerosj.row_mut(0).iter_mut().enumerate() {
+        *v = (i as f64 + 1.0) * PI;
+    }
+    if order == 0 {
+        return zerosj.row(0).to_owned();
+    }
+
+    let mut points = Array1::from_shape_fn(n_points + order as usize, |j| (j as f64 + 1.0) * PI);
+
+    // Setup the exact same convergence tolerances as SciPy's default brentq
+    // SciPy defaults: xtol=2e-12, maxiter=100
+    let mut convergency = SimpleConvergency {
+        eps: 2e-12,
+        max_iter: 100,
+    };
+
+    for i in 1..=order as usize {
+        for j in 0..(n_points + (order as usize) - i) {
+            let a = points[j];
+            let b = points[j + 1];
+
+            // find_root_brent requires opposite signs at `a` and `b` (a valid bracket).
+            let root = find_root_brent(a, b, |r| spherical_jn(i as f64, r), &mut convergency)
+                .expect("Failed to converge or bracket the root");
+
+            // Update in-place! Because we read `points[j+1]` on the next loop,
+            // overwriting `points[j]` here is perfectly safe and zero-allocation.
+            points[j] = root;
+        }
+        zerosj
+            .row_mut(i)
+            .slice_mut(s![..n_points])
+            .assign(&points.slice(s![..n_points]));
+    }
+    zerosj.row(order as usize).to_owned()
+}
+
+pub(super) fn spherical_jn(order: f64, z: f64) -> f64 {
+    (FRAC_PI_2 / z).sqrt() * bessel_j(order + 0.5, z).unwrap()
 }

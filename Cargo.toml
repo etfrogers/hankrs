@@ -24,6 +24,7 @@ num = "0.4.3"
 rstest_reuse = "0.7.0"
 rayon = "1.12.0"
 thiserror = "2.0.18"
+roots = "0.0.8"
 
 # 1. Use Apple Accelerate when testing on a Mac
 [target.'cfg(target_os = "macos")'.dev-dependencies]
