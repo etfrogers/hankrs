@@ -877,7 +877,7 @@ where
         (y0, None)
     };
     let interpolator = Interp1DBuilder::new(y0.into_dyn())
-        .x(x0.clone())
+        .x(x0)
         .strategy(CubicSpline::new().extrapolate(true))
         .build()
         .unwrap();
