@@ -310,6 +310,10 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
+    ///
+    /// # See Also
+    /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
+    /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
     pub fn new_spherical(order: i32, max_radius: f64, n_points: usize) -> Self {
         Self::build(
             order,
@@ -329,6 +333,10 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
+    ///
+    /// # See Also
+    /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
+    /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
     pub fn new_spherical_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
         Self::build(
             order,
@@ -348,6 +356,10 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
+    ///
+    /// # See Also
+    /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
+    /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
     pub fn new_spherical_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
         Self::build(
             order,
