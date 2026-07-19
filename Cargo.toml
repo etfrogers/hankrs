@@ -37,7 +37,12 @@ blas-src = { version = "0.8", features = ["openblas"] }
 [dev-dependencies]
 rstest = "0.26.1"
 plotters = "0.3.7"
+criterion = "0.5"
 
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[[bench]]
+name = "hankel_benchmark"
+harness = false
