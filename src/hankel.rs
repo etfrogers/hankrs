@@ -382,7 +382,7 @@ impl HankelTransform {
     ) -> Self {
         let zero_fun: fn(i32, usize) -> Array1<f64> = match transform_type {
             TransformType::Polar => |order: i32, n_points| {
-                Array1::from_vec(bessel_zeros(&BesselFunType::J, order, n_points, 1e-6))
+                Array1::from_vec(bessel_zeros(BesselFunType::J, order, n_points, 1e-6))
             },
             TransformType::Spherical => {
                 |order: i32, n_points: usize| spherical_jn_zeros(order, n_points)
