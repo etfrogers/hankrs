@@ -6,10 +6,11 @@ use ndarray::{Array1, array};
 use rstest::rstest;
 
 #[rstest]
+#[allow(clippy::approx_constant)]
 fn test_jn_spherical_zeros() {
     let order = 0;
     // zeros are n*pi for n = 0
-    let zs = spherical_jn_zeros(order as i32, 10);
+    let zs = spherical_jn_zeros(order, 10);
     assert_relative_eq!(zs, PI * Array1::range(1.0, 11.0, 1.0));
 
     // https://www.researchgate.net/figure/Zeros-of-the-spherical-Bessel-functions_tbl1_348819348
@@ -28,8 +29,8 @@ fn test_jn_spherical_zeros() {
         [15.7080, 17.2208, 18.6890, 20.1218, 21.5254],
     ];
 
-    for order in 0..5 {
-        let zs = spherical_jn_zeros(order as i32, 5);
+    for order in 0..5i32 {
+        let zs = spherical_jn_zeros(order, 5);
         assert_relative_eq!(zs, expected_zeros.column(order as usize), epsilon = 1e-4);
     }
 

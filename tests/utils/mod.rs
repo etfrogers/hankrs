@@ -121,7 +121,7 @@ pub(crate) fn assert_arrays_equal<'a>(
     // let reference = reference.clone().into_vec();
     // let exp_error = MACHINE_CONSTANTS.abs_error_tolerance;
 
-    for (i, (&act, exp)) in actual.into_iter().zip(expected.into_iter()).enumerate() {
+    for (i, (&act, exp)) in actual.into_iter().zip(expected).enumerate() {
         if !relative_eq!(act, exp, epsilon = eps, max_relative = max_rel) {
             let (actual_error, relative_error) = abs_rel_errors(act, *exp);
             panic!(
