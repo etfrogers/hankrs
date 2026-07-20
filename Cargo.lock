@@ -38,18 +38,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "amos-bessel-rs"
-version = "0.4.0"
-dependencies = [
- "approx",
- "conv",
- "itertools 0.14.0",
- "num",
- "paste",
- "thiserror",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -101,8 +89,10 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 [[package]]
 name = "bessel-zeros"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca5be37c7d9393b13f8692da05589e3d7af40cce5da0b5e35f28cabc95be493f"
 dependencies = [
- "amos-bessel-rs 0.4.0",
+ "amos-bessel-rs",
  "real-bessel",
 ]
 
@@ -684,7 +674,7 @@ dependencies = [
 name = "hankrs"
 version = "0.2.0"
 dependencies = [
- "amos-bessel-rs 0.3.0",
+ "amos-bessel-rs",
  "approx",
  "bessel-zeros",
  "blas-src",
@@ -1337,6 +1327,8 @@ dependencies = [
 [[package]]
 name = "real-bessel"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "121c9a33aff1a6b101ce71e0dabe333adda7cc3625e19c86b2ead4a1d09df461"
 dependencies = [
  "thiserror",
 ]
