@@ -28,6 +28,8 @@
 //! // The transformed values are evaluated at `transformer.kr()` (or `transformer.frequency()`)
 //! ```
 
+// Not using BLAS increae timr by 4% on a qdht with 256 points, and 233% on a qdht with 1024 points
+// Using bessel_zeros fast mode, and real_bessel, speeds up creation by a factor of 4.
 #![warn(missing_docs)]
 
 mod hankel;

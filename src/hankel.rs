@@ -15,10 +15,11 @@ use std::{f64::consts::PI, fmt::Debug};
 use thiserror::Error;
 
 use amos_bessel_rs::bessel_j;
-use bessel_zeros::{BesselFunType, bessel_zeros};
+use bessel_zeros::{BesselFunType, fast::bessel_zeros};
 use ndarray::ArrayView1;
 use num::Zero;
 use num_complex::Complex;
+use real_bessel::jn as bessel_j_real;
 
 /// A trait for scalar types that can be processed by the Hankel transform.
 /// It abstracts over basic array arithmetic and matrix multiplications.
@@ -414,7 +415,7 @@ impl HankelTransform {
 
         let (jp1, jr, jv): (Array1<_>, Array1<_>, Array1<_>) = match transform_type {
             TransformType::Polar => {
-                let jp1 = alpha.map(|a| bessel_j(order + 1, *a).unwrap().abs());
+                let jp1 = alpha.map(|a| bessel_j_real(order + 1, *a).abs());
                 (jp1.clone(), jp1.clone() / max_radius, jp1 / max_v)
             }
             TransformType::Spherical => {
@@ -437,7 +438,7 @@ impl HankelTransform {
                 let jp1_j = jp1[j];
 
                 let jp_val = match transform_type {
-                    TransformType::Polar => bessel_j(order, (a_i * a_j) / s).unwrap(),
+                    TransformType::Polar => bessel_j_real(order, (a_i * a_j) / s),
                     TransformType::Spherical => {
                         spherical_jn(order as f64, (a_i * a_j) / s) / (2.0 * n_points as f64).sqrt()
                     }

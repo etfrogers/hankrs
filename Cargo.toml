@@ -19,7 +19,8 @@ approx = "0.5.1"
 ndarray-interp = "0.5.0"
 rand = "0.9.2"
 amos-bessel-rs = "0.3.0"
-bessel-zeros = "0.1.1"
+real-bessel = { path = "../bessel-rs/real-bessel" , version = "0.1.0" }
+bessel-zeros = { path = "../bessel-rs/bessel-zeros" , version = "0.2.0" }
 num = "0.4.3"
 rstest_reuse = "0.7.0"
 rayon = "1.12.0"
