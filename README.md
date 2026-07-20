@@ -41,6 +41,8 @@ cargo build
 cargo test
 ```
 
+**Note for Linux/Windows Developers:** When compiling tests or benchmarks, this crate links against the system's OpenBLAS library for acceleration. You must install the OpenBLAS development headers (e.g., `sudo apt-get install libopenblas-dev` on Ubuntu) prior to running `cargo test`, otherwise the build will fail to link.
+
 Bugs & Contribution
 -------------------
 

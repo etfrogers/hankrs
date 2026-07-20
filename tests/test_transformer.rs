@@ -728,3 +728,98 @@ fn test_jinc2d(
     let error = (expected_ht_array).mean_abs_err(&actual_ht).unwrap();
     assert!(error < 1e-3, "Error was {error}");
 }
+
+// test spherical Hankel transform
+#[rstest]
+fn test_spherical() {
+    let r = Array1::<f64>::linspace(0.0, 10.0, 100);
+    let function = r.mapv(|r| (-(r * r) / 2.0).exp());
+    let analytical_laplacian = r.mapv(|r| (-(r * r) / 2.0).exp() * (r * r - 3.0));
+
+    let transformer = HankelTransform::new_spherical_from_r_grid(0, r);
+    let resampled_r = transformer.to_transform_r(&function).unwrap();
+    let laplacian = transformer.qdht(&resampled_r, Axis(0));
+    let laplacian = -laplacian * transformer.kr().mapv(|kr| kr * kr);
+    let laplacian = transformer.iqdht(&laplacian, Axis(0));
+    let resmampled_laplacian = transformer.to_original_r(&laplacian).unwrap();
+
+    assert_relative_eq!(
+        analytical_laplacian,
+        resmampled_laplacian,
+        max_relative = 0.1,
+        epsilon = 0.001
+    );
+}
+
+#[rstest]
+
+fn test_spherical_gaussian(#[values(0.5, 1.0, 2.0)] a: f64) {
+    let r_max = 20.0;
+    let n_points = 250;
+
+    let transformer = HankelTransform::new_spherical(0, r_max, n_points);
+
+    let function: Array1<f64> = transformer
+        .radius()
+        .iter()
+        .map(|&r| (-a * r.powi(2)).exp())
+        .collect();
+
+    let kr = transformer.kr();
+
+    let expected_transform: Array1<f64> = kr
+        .iter()
+        .map(|&k| {
+            let prefactor = PI.sqrt() / (4.0 * a.powf(1.5));
+            prefactor * (-(k.powi(2)) / (4.0 * a)).exp()
+        })
+        .collect();
+
+    let actual_transform = transformer.qdht(&function, Axis(0));
+
+    for (actual, expected) in actual_transform.iter().zip(expected_transform.iter()) {
+        assert_relative_eq!(*actual, *expected, epsilon = 0.001, max_relative = 0.1);
+    }
+}
+
+#[rstest]
+fn test_top_hat_spherical(#[values(0.5, 1.0, 2.0)] mut a: f64) {
+    let r_max = 20.0;
+    let n_points = 1000;
+
+    let transformer = HankelTransform::new_spherical(0, r_max, n_points);
+
+    // function = (transformer.r < a).astype(float)
+    let function: Array1<f64> = transformer
+        .radius()
+        .iter()
+        .map(|&r| if r < a { 1.0 } else { 0.0 })
+        .collect();
+
+    // actual_a_index = np.where(function > 0.5)[0][-1]
+    // actual_a = transformer.r[actual_a_index]
+    if let Some(actual_a_index) = function.iter().rposition(|&val| val > 0.5) {
+        a = transformer.radius()[actual_a_index];
+    }
+
+    let kr = transformer.kr();
+
+    // expected_transform = (np.sin(kr * a) - kr * a * np.cos(kr * a)) / kr**3
+    let expected_transform: Vec<f64> = kr
+        .iter()
+        .map(|&k| {
+            // Guarding against exactly 0.0 just in case, though roots usually aren't 0
+            if k == 0.0 {
+                a.powi(3) / 3.0
+            } else {
+                ((k * a).sin() - k * a * (k * a).cos()) / k.powi(3)
+            }
+        })
+        .collect();
+
+    let actual_transform = transformer.qdht(&function, Axis(0));
+
+    for (actual, expected) in actual_transform.iter().zip(expected_transform.iter()) {
+        assert_relative_eq!(*actual, *expected, epsilon = 0.05, max_relative = 0.1);
+    }
+}

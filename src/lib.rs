@@ -11,6 +11,7 @@
 //!
 //! ## Quick Start
 //! ```rust
+//! # extern crate blas_src;
 //! use hankrs::HankelTransform;
 //! use ndarray::{Array1, Axis};
 //!
@@ -27,6 +28,8 @@
 //! // The transformed values are evaluated at `transformer.kr()` (or `transformer.frequency()`)
 //! ```
 
+// Not using BLAS increae timr by 4% on a qdht with 256 points, and 233% on a qdht with 1024 points
+// Using bessel_zeros fast mode, and real_bessel, speeds up creation by a factor of 4.
 #![warn(missing_docs)]
 
 mod hankel;
@@ -35,4 +38,10 @@ mod hankel;
 pub mod one_shot;
 
 /// The primary struct used for computing Hankel transforms.
-pub use crate::hankel::{HankelScalar, HankelTransform};
+pub use hankel::{HankelScalar, HankelTransform, InterpError};
+
+#[cfg(test)]
+pub(crate) use hankel::{spherical_jn, spherical_jn_zeros};
+
+#[cfg(test)]
+mod tests;

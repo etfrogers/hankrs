@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+
+extern crate blas_src;
 use ndarray::{Array1, ArrayView1, ArrayView2};
 use plotters::prelude::*;
 use std::{fs, ops::Range};
@@ -42,11 +44,7 @@ pub fn plot_1d(
         .y_desc(ylabel)
         .draw()?;
 
-    let points: Vec<(f64, f64)> = x
-        .into_iter()
-        .zip(y.into_iter())
-        .map(|(a, b)| (*a, *b))
-        .collect();
+    let points: Vec<(f64, f64)> = x.into_iter().zip(y).map(|(a, b)| (*a, *b)).collect();
     chart.draw_series(LineSeries::new(points, &BLUE))?;
 
     root.present()?;
@@ -84,32 +82,24 @@ pub fn plot_1d_compare(
         .y_desc(ylabel)
         .draw()?;
 
-    let p1: Vec<(f64, f64)> = x1
-        .into_iter()
-        .zip(y1.into_iter())
-        .map(|(a, b)| (*a, *b))
-        .collect();
+    let p1: Vec<(f64, f64)> = x1.into_iter().zip(y1).map(|(a, b)| (*a, *b)).collect();
     chart
         .draw_series(LineSeries::new(p1, &BLUE))?
         .label(label1)
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
 
-    let p2: Vec<(f64, f64)> = x2
-        .into_iter()
-        .zip(y2.into_iter())
-        .map(|(a, b)| (*a, *b))
-        .collect();
+    let p2: Vec<(f64, f64)> = x2.into_iter().zip(y2).map(|(a, b)| (*a, *b)).collect();
     chart
         .draw_series(PointSeries::of_element(p2, 3, &RED, &|c, s, st| {
-            return EmptyElement::at(c) + Cross::new((0, 0), s, st.filled());
+            EmptyElement::at(c) + Cross::new((0, 0), s, st.filled())
         }))?
         .label(label2)
-        .legend(|(x, y)| Cross::new((x, y), 3, &RED));
+        .legend(|(x, y)| Cross::new((x, y), 3, RED));
 
     chart
         .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
         .draw()?;
     root.present()?;
     Ok(())
@@ -157,7 +147,7 @@ pub fn plot_1d_original_and_transform(
 
     let p_orig: Vec<(f64, f64)> = x_orig
         .into_iter()
-        .zip(y_orig.into_iter())
+        .zip(y_orig)
         .map(|(a, b)| (*a, *b))
         .collect();
     chart_orig.draw_series(LineSeries::new(p_orig, &BLUE))?;
@@ -177,30 +167,30 @@ pub fn plot_1d_original_and_transform(
 
     let p1: Vec<(f64, f64)> = x1_trans
         .into_iter()
-        .zip(y1_trans.into_iter())
+        .zip(y1_trans)
         .map(|(a, b)| (*a, *b))
         .collect();
     chart_trans
         .draw_series(LineSeries::new(p1, &BLUE))?
         .label(label1)
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
 
     let p2: Vec<(f64, f64)> = x2_trans
         .into_iter()
-        .zip(y2_trans.into_iter())
+        .zip(y2_trans)
         .map(|(a, b)| (*a, *b))
         .collect();
     chart_trans
         .draw_series(PointSeries::of_element(p2, 3, &RED, &|c, s, st| {
-            return EmptyElement::at(c) + Cross::new((0, 0), s, st.filled());
+            EmptyElement::at(c) + Cross::new((0, 0), s, st.filled())
         }))?
         .label(label2)
-        .legend(|(x, y)| Cross::new((x, y), 3, &RED));
+        .legend(|(x, y)| Cross::new((x, y), 3, RED));
 
     chart_trans
         .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
         .draw()?;
 
     root.present()?;

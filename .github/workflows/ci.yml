@@ -27,7 +27,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Install dependencies (Linux)
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev libopenblas-dev
         if: runner.os == 'Linux'
 
       - name: Build
@@ -38,6 +38,9 @@ jobs:
 
       - name: Build docs
         run: cargo doc --no-deps
+
+      - name: Run release tests # will run again below to get coverage stats, but this gets us to fail fast if tests fail
+        run: cargo test --release
 
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
