@@ -686,6 +686,7 @@ dependencies = [
  "ndarray-stats",
  "num",
  "num-complex",
+ "openblas-src",
  "plotters",
  "rand 0.9.2",
  "rayon",
