@@ -1,6 +1,5 @@
 use approx::{AbsDiffEq, RelativeEq};
 use ndarray::Zip;
-use ndarray::parallel::prelude::*;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayView, ArrayView2, Axis, Data, Dim, DimAdd, Dimension,
     Ix1, IxDyn, RemoveAxis, s,
@@ -134,6 +133,7 @@ impl HankelScalar for Complex<f64> {
 ///
 /// ## Examples
 /// ```rust
+/// # #[cfg(feature = "blas")]
 /// # extern crate blas_src;
 /// use hankrs::HankelTransform;
 /// use ndarray::{Array1, Axis};

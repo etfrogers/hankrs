@@ -9,8 +9,12 @@ keywords = ["hankel-transforms", "quasi-discrete"]
 authors = ["Edward Rogers <etfrogers@hotmail.com>"]
 categories = ["science", "mathematics"]
 
+[features]
+
+blas = ["ndarray/blas"]
+
 [dependencies]
-ndarray = { version = "0.16", features = ["approx", "blas", "rayon"] }
+ndarray = { version = "0.16", features = ["approx", "rayon"] }
 ndarray-stats = "0.6.0"
 conv = "0.3.3"
 num-complex = "0.4.6"

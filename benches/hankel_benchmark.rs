@@ -1,3 +1,4 @@
+#[cfg(feature = "blas")]
 extern crate blas_src;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
