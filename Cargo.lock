@@ -672,7 +672,7 @@ dependencies = [
 
 [[package]]
 name = "hankrs"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "amos-bessel-rs",
  "approx",

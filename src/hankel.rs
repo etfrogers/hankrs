@@ -440,7 +440,7 @@ impl HankelTransform {
                 let jp_val = match transform_type {
                     TransformType::Polar => bessel_j_real(order, (a_i * a_j) / s),
                     TransformType::Spherical => {
-                        spherical_jn(order as f64, (a_i * a_j) / s) / (2.0 * n_points as f64).sqrt()
+                        spherical_jn(order as f64, (a_i * a_j) / s) * (PI / (2.0 * s)).sqrt()
                     }
                 };
                 // Write directly into the final T matrix
