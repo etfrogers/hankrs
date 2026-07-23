@@ -1,12 +1,13 @@
 use approx::{AbsDiffEq, RelativeEq};
 use ndarray::Zip;
+
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayView, ArrayView2, Axis, Data, Dim, DimAdd, Dimension,
     Ix1, IxDyn, RemoveAxis, s,
 };
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
-use rayon::prelude::*;
+
 use roots::{SimpleConvergency, find_root_brent};
 use std::f64::consts::FRAC_PI_2;
 use std::fmt::Display;
@@ -32,6 +33,15 @@ pub trait HankelScalar: Clone + Zero + Send + Sync {
     /// Multiplies a mutable vector of this scalar type in-place by a purely real vector.
     fn mul_real_array_assign(vector: &mut Array1<Self>, scale: ArrayView1<f64>);
 
+    /// Multiplies a purely real transform matrix with a 2D matrix of this scalar type.
+    fn dot_real_matrix2(matrix: ArrayView2<f64>, rhs: ArrayView2<Self>) -> Array2<Self>;
+
+    /// Scales the rows of a 2D matrix of this scalar type by a purely real vector.
+    fn scale_rows(matrix: &mut Array2<Self>, scale: ArrayView1<f64>);
+
+    /// Divides the rows of a 2D matrix of this scalar type by a purely real vector.
+    fn div_rows(matrix: &mut Array2<Self>, scale: ArrayView1<f64>);
+
     /// Interpolates the array along the specified axis using a cubic spline.
     fn spline<D>(
         x0: ArrayView1<f64>,
@@ -55,6 +65,24 @@ impl HankelScalar for f64 {
     }
     fn mul_real_array_assign(vector: &mut Array1<f64>, scale: ArrayView1<f64>) {
         *vector *= &scale;
+    }
+    fn dot_real_matrix2(matrix: ArrayView2<f64>, rhs: ArrayView2<f64>) -> Array2<f64> {
+        matrix.dot(&rhs)
+    }
+    fn scale_rows(matrix: &mut Array2<f64>, scale: ArrayView1<f64>) {
+        ndarray::Zip::from(matrix.rows_mut())
+            .and(scale)
+            .par_for_each(|mut row, &s| {
+                row.mapv_inplace(|v| v * s);
+            });
+    }
+    fn div_rows(matrix: &mut Array2<f64>, scale: ArrayView1<f64>) {
+        ndarray::Zip::from(matrix.rows_mut())
+            .and(scale)
+            .par_for_each(|mut row, &s| {
+                let inv_s = 1.0 / s;
+                row.mapv_inplace(|v| v * inv_s);
+            });
     }
     fn spline<D>(
         x0: ArrayView1<f64>,
@@ -96,6 +124,31 @@ impl HankelScalar for Complex<f64> {
         ndarray::Zip::from(vector)
             .and(scale)
             .for_each(|v, &s| *v *= s);
+    }
+    fn dot_real_matrix2(
+        matrix: ArrayView2<f64>,
+        rhs: ArrayView2<Complex<f64>>,
+    ) -> Array2<Complex<f64>> {
+        let real_part = matrix.dot(&rhs.mapv(|c| c.re));
+        let imag_part = matrix.dot(&rhs.mapv(|c| c.im));
+        ndarray::Zip::from(&real_part)
+            .and(&imag_part)
+            .map_collect(|&r, &i| Complex::new(r, i))
+    }
+    fn scale_rows(matrix: &mut Array2<Complex<f64>>, scale: ArrayView1<f64>) {
+        ndarray::Zip::from(matrix.rows_mut())
+            .and(scale)
+            .par_for_each(|mut row, &s| {
+                row.mapv_inplace(|v| v * s);
+            });
+    }
+    fn div_rows(matrix: &mut Array2<Complex<f64>>, scale: ArrayView1<f64>) {
+        ndarray::Zip::from(matrix.rows_mut())
+            .and(scale)
+            .par_for_each(|mut row, &s| {
+                let inv_s = 1.0 / s;
+                row.mapv_inplace(|v| v * inv_s);
+            });
     }
     fn spline<D>(
         x0: ArrayView1<f64>,
@@ -806,22 +859,34 @@ impl HankelTransform {
     where
         S: Data<Elem = T>,
     {
-        let mut transform = Array::zeros(f.dim());
+        // 1. Swap axes to bring the transform axis to the front
+        let mut f_swapped = f.view();
+        f_swapped.swap_axes(0, axis.0);
 
-        // 1. Swap into_iter() for into_par_iter() on both lanes
-        // 2. Swap the for-loop for .for_each()
-        transform
-            .lanes_mut(axis)
-            .into_iter() // 1. Start as a normal sequential iterator
-            .zip(f.lanes(axis)) // 2. Zip them sequentially
-            .par_bridge() // 3. MAGIC: Hand the sequential pipeline over to Rayon's thread pool
-            .for_each(|(mut transform_line, fr_line)| {
-                let scaled_line = T::div_real_array(fr_line, scale_factor_input);
-                let mut transformed = T::dot_real_matrix(self.t.view(), scaled_line.view());
-                T::mul_real_array_assign(&mut transformed, scale_factor_output);
-                transform_line.assign(&transformed);
-            });
-        transform
+        // 2. Reshape to 2D: [N, Rest]
+        let n = f_swapped.shape()[0];
+        let rest: usize = f_swapped.shape()[1..].iter().product();
+
+        let f_std = f_swapped.as_standard_layout().into_owned();
+        let mut f_2d = f_std.into_shape_with_order((n, rest)).unwrap();
+
+        // 3. Divide input rows by scale_factor_input
+        T::div_rows(&mut f_2d, scale_factor_input);
+
+        // 4. Matrix multiply: T * f_2d
+        let mut transformed_2d = T::dot_real_matrix2(self.t.view(), f_2d.view());
+
+        // 5. Scale output rows
+        T::scale_rows(&mut transformed_2d, scale_factor_output);
+
+        // 6. Reshape back to the swapped shape, then swap axes back
+        let mut transformed_swapped = transformed_2d
+            .into_shape_with_order(f_swapped.raw_dim())
+            .unwrap();
+        transformed_swapped.swap_axes(0, axis.0);
+
+        // Ensure standard layout
+        transformed_swapped.as_standard_layout().into_owned()
     }
 
     /// Returns a view of the transform matrix.
