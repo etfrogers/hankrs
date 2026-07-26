@@ -266,12 +266,14 @@ fn intensity(v: f64) -> f64 {
     v.abs().powf(2.0)
 }
 
+type TransformFunc = dyn Fn(ArrayView1<f64>, f64, i32) -> Array1<f64>;
+
 #[rstest]
 #[case("Jinc", &generalised_jinc)]
 #[case("Top Hat", &generalised_top_hat)]
 fn test_energy_conservation(
     #[case] _shape_name: &str,
-    #[case] func: &dyn Fn(ArrayView1<f64>, f64, i32) -> Array1<f64>,
+    #[case] func: &TransformFunc,
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
     let integrate_over_r = |r: ArrayView1<f64>, y| -> f64 {
