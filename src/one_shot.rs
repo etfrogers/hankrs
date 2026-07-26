@@ -1,6 +1,6 @@
 use ndarray::{Array, Array1, ArrayBase, Axis, Data, Dim, DimAdd, Dimension, RemoveAxis};
 
-use crate::hankel::{HankelScalar, HankelTransform};
+use crate::hankel::{HankelError, HankelScalar, HankelTransform};
 
 /// Perform a quasi-discrete Hankel transform of the function `f` (sampled at points
 /// `r`) and return the transformed function and its sample points in `k`-space.
@@ -28,16 +28,16 @@ pub fn qdht<T: HankelScalar, D, S>(
     f: &ArrayBase<S, D>,
     order: i32,
     axis: Axis,
-) -> (Array1<f64>, Array<T, D>)
+) -> Result<(Array1<f64>, Array<T, D>), HankelError>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     S: Data<Elem = T>,
 {
-    let transformer = HankelTransform::new_from_r_grid(order, r).unwrap();
-    let f_transform = transformer.to_transform_r_nd(f, axis).unwrap();
+    let transformer = HankelTransform::new_from_r_grid(order, r)?;
+    let f_transform = transformer.to_transform_r_nd(f, axis)?;
     let ht = transformer.qdht(&f_transform, axis);
-    (transformer.into_kr(), ht)
+    Ok((transformer.into_kr(), ht))
 }
 
 /// Perform an inverse quasi-discrete Hankel transform of the function `f` (sampled at points
@@ -66,14 +66,14 @@ pub fn iqdht<T: HankelScalar, D, S>(
     f: &ArrayBase<S, D>,
     order: i32,
     axis: Axis,
-) -> (Array1<f64>, Array<T, D>)
+) -> Result<(Array1<f64>, Array<T, D>), HankelError>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     S: Data<Elem = T>,
 {
-    let transformer = HankelTransform::new_from_k_grid(order, k).unwrap();
-    let f_transform = transformer.to_transform_k_nd(f, axis).unwrap();
+    let transformer = HankelTransform::new_from_k_grid(order, k)?;
+    let f_transform = transformer.to_transform_k_nd(f, axis)?;
     let ht = transformer.iqdht(&f_transform, axis);
-    (transformer.into_radius(), ht)
+    Ok((transformer.into_radius(), ht))
 }
