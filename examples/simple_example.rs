@@ -7,7 +7,7 @@ use crate::helper::plot_1d;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a HankelTransform object which holds the grid for r and kr points.
-    let transformer = HankelTransform::new(0, 100.0, 1024);
+    let transformer = HankelTransform::new(0, 100.0, 1024).unwrap();
     let radius = transformer.radius();
 
     // Note that although the calculation fails at r = 0, transformer.radius() does not include r=0.

@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r_max = 20.0;
     let n_points = 250;
 
-    let transformer = HankelTransform::new_spherical(0, r_max, n_points);
+    let transformer = HankelTransform::new_spherical(0, r_max, n_points).unwrap();
 
     let function: Array1<f64> = transformer.radius().mapv(|r| (-a * r.powi(2)).exp());
 
@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r_max_hat = 20.0;
     let n_points_hat = 1000;
 
-    let transformer_hat = HankelTransform::new_spherical(0, r_max_hat, n_points_hat);
+    let transformer_hat = HankelTransform::new_spherical(0, r_max_hat, n_points_hat).unwrap();
 
     // Build top-hat on the QDHT grid; snap `a` to the nearest grid point
     let function_hat: Array1<f64> = transformer_hat

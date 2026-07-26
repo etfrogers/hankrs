@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for (i, &order) in [0, 1, 4].iter().enumerate() {
-        let transformer = HankelTransform::new(order, 2.0, 1024);
+        let transformer = HankelTransform::new(order, 2.0, 1024).unwrap();
         let f = generalised_top_hat(transformer.radius(), a_val, order);
         let actual_ht = transformer.qdht(&f, Axis(0));
         let v = transformer.frequency();
@@ -199,7 +199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // Note again the scaling factor of 2\pi.
     let a5 = 1.0;
-    let transformer = HankelTransform::new(0, 50.0, 1024);
+    let transformer = HankelTransform::new(0, 50.0, 1024).unwrap();
     let f5 = transformer.radius().mapv(|r| 1.0 / (r * r + a5 * a5));
     let actual_ht = transformer.qdht(&f5, Axis(0));
     let kr_grid = transformer.kr();

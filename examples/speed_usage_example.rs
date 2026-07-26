@@ -22,7 +22,7 @@ fn propagate_using_object(
     z: ArrayView1<f64>,
     k0: f64,
 ) -> Array2<f64> {
-    let transformer = HankelTransform::new_from_r_grid(0, r.to_owned());
+    let transformer = HankelTransform::new_from_r_grid(0, r.to_owned()).unwrap();
     let field_for_transform = transformer.to_transform_r(&field).unwrap(); // Resampled field
     let hankel_transform = transformer.qdht(&field_for_transform, Axis(0));
 

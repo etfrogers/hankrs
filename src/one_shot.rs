@@ -34,7 +34,7 @@ where
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     S: Data<Elem = T>,
 {
-    let transformer = HankelTransform::new_from_r_grid(order, r);
+    let transformer = HankelTransform::new_from_r_grid(order, r).unwrap();
     let f_transform = transformer.to_transform_r_nd(f, axis).unwrap();
     let ht = transformer.qdht(&f_transform, axis);
     (transformer.into_kr(), ht)
@@ -72,7 +72,7 @@ where
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     S: Data<Elem = T>,
 {
-    let transformer = HankelTransform::new_from_k_grid(order, k);
+    let transformer = HankelTransform::new_from_k_grid(order, k).unwrap();
     let f_transform = transformer.to_transform_k_nd(f, axis).unwrap();
     let ht = transformer.iqdht(&f_transform, axis);
     (transformer.into_radius(), ht)

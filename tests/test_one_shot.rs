@@ -166,7 +166,7 @@ fn test_jinc_equivalence(
     let f = generalised_jinc(radius.view(), a, order);
     let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0));
 
-    let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let transformer = HankelTransform::new_from_r_grid(order, radius).unwrap();
     let f_t = generalised_jinc(transformer.radius(), a, order);
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-8, 1e-5);
@@ -181,7 +181,7 @@ fn test_top_hat_equivalence(
 ) {
     let f = generalised_top_hat(radius.view(), a, order);
     let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0));
-    let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let transformer = HankelTransform::new_from_r_grid(order, radius).unwrap();
     let f_t = generalised_top_hat(transformer.radius(), a, order);
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-8, 1e-5);
@@ -194,7 +194,7 @@ fn test_gaussian_equivalence(#[values(2.0, 5.0, 10.0)] a: f64, radius: Array1<f6
     // scaling of the magnitude.
     let f = (-a.powi(2) * radius.powi(2)).exp();
     let (_, one_shot_ht) = qdht(radius.clone(), &f, 0, Axis(0));
-    let transformer = HankelTransform::new_from_r_grid(0, radius);
+    let transformer = HankelTransform::new_from_r_grid(0, radius).unwrap();
     let f_t = (-a.powi(2) * transformer.radius().powi(2)).exp();
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-4, 1e-3);
@@ -205,7 +205,7 @@ fn test_1_over_r2_plus_z2_equivalence(#[values(2.0, 1.0, 0.1)] a: f64) {
     let r = Array1::linspace(0.0, 50.0, 1024);
     let f = 1.0 / (r.powi(2) + a.powi(2));
 
-    let transformer = HankelTransform::new_from_r_grid(0, r.clone());
+    let transformer = HankelTransform::new_from_r_grid(0, r.clone()).unwrap();
 
     let f_transformer = 1.0 / (transformer.radius().powi(2) + a.powi(2));
     assert_arrays_equal(
