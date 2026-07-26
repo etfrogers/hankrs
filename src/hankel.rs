@@ -21,7 +21,18 @@ use num_complex::Complex;
 use real_bessel::jn as bessel_j_real;
 
 /// A trait for scalar types that can be processed by the Hankel transform.
-/// It abstracts over basic array arithmetic and matrix multiplications.
+///
+/// Under the hood, the QDHT algorithm computes Hankel transforms using purely real matrices
+/// (specifically the Bessel roots and zero values). However, input functions often
+/// represent optical fields or physical quantities that are complex-valued (`Complex<f64>`).
+///
+/// `HankelScalar` bridges this gap by abstracting over basic array arithmetic,
+/// matrix multiplications, and interpolation, allowing the exact same underlying mathematical
+/// logic to seamlessly process both `f64` (real) and `Complex<f64>` (complex) input arrays.
+///
+/// # Implementations
+/// This trait is already implemented for `f64` and `num_complex::Complex<f64>`. You generally
+/// will not need to implement this yourself unless you are passing custom scalar types into the transform.
 pub trait HankelScalar: Clone + Zero + Send + Sync {
     /// Multiplies a purely real transform matrix with a vector of this scalar type.
     fn dot_real_matrix(matrix: ArrayView2<f64>, vector: ArrayView1<Self>) -> Array1<Self>;
