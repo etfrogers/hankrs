@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let k0 = 2.0 * PI / lambda_;
 
     // Set up a HankelTransform object, telling it the order (0) and the radial grid.
-    let transformer = HankelTransform::new_from_r_grid(0, r.clone());
+    let transformer = HankelTransform::new_from_r_grid(0, r.clone()).unwrap();
 
     // Set up the electric field profile at z = 0, and resample onto the correct radial grid
     // (transformer.radius()) as required for the QDHT.

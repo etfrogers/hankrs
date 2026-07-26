@@ -1,6 +1,6 @@
 #[cfg(feature = "blas")]
 extern crate blas_src;
-use std::f64::{INFINITY, consts::PI};
+use std::f64::consts::PI;
 
 use amos_bessel_rs::bessel_j;
 use approx::assert_abs_diff_eq;
@@ -158,7 +158,7 @@ pub fn generalised_jinc(v: ArrayView1<f64>, a: f64, p: i32) -> Array1<f64> {
 fn generalised_jinc_f(v: f64, a: f64, p: i32) -> f64 {
     if v == 0. {
         match p {
-            -1 => INFINITY,
+            -1 => f64::INFINITY,
             -2 => -PI,
             0 => PI * a.powi(2),
             _ => 0.0,

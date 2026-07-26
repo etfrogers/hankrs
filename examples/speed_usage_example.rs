@@ -22,7 +22,7 @@ fn propagate_using_object(
     z: ArrayView1<f64>,
     k0: f64,
 ) -> Array2<f64> {
-    let transformer = HankelTransform::new_from_r_grid(0, r.to_owned());
+    let transformer = HankelTransform::new_from_r_grid(0, r.to_owned()).unwrap();
     let field_for_transform = transformer.to_transform_r(&field).unwrap(); // Resampled field
     let hankel_transform = transformer.qdht(&field_for_transform, Axis(0));
 
@@ -51,7 +51,7 @@ fn propagate_using_single_shot(
     z: ArrayView1<f64>,
     k0: f64,
 ) -> Array2<f64> {
-    let (kr, hankel_transform) = qdht(r.to_owned(), &field, 0, Axis(0));
+    let (kr, hankel_transform) = qdht(r.to_owned(), &field, 0, Axis(0)).unwrap();
 
     let mut propagated_field = Array2::<Complex64>::zeros((nr, nz));
     let kz = kr.mapv(|kr_val| (k0 * k0 - kr_val * kr_val).sqrt());
@@ -61,7 +61,8 @@ fn propagate_using_single_shot(
         let hankel_transform_at_z = ndarray::Zip::from(&hankel_transform)
             .and(&phi_z)
             .map_collect(|&ekr, &phi| ekr * Complex64::new(0.0, phi).exp());
-        let (r_transform, field_at_z) = iqdht(kr.clone(), &hankel_transform_at_z, 0, Axis(0));
+        let (r_transform, field_at_z) =
+            iqdht(kr.clone(), &hankel_transform_at_z, 0, Axis(0)).unwrap();
 
         let field_slice = Complex64::spline(r_transform.view(), field_at_z.view(), r, Axis(0));
         propagated_field.column_mut(n).assign(&field_slice);

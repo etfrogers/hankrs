@@ -21,7 +21,7 @@ fn test_jinc_oneshot(
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
     let f = generalised_jinc(radius.view(), a, order);
-    let (kr, actual_ht) = qdht(radius, &f, order, Axis(0));
+    let (kr, actual_ht) = qdht(radius, &f, order, Axis(0)).unwrap();
     let v = kr / (2.0 * PI);
     let expected_ht = generalised_top_hat(v.view(), a, order);
     let error = expected_ht.mean_abs_err(&actual_ht).unwrap();
@@ -43,7 +43,7 @@ fn test_jinc2d_oneshot(
     } else {
         outer(second_axis.view(), f.view())
     };
-    let (kr, actual_ht) = qdht(radius, &f_array, order, Axis(axis));
+    let (kr, actual_ht) = qdht(radius, &f_array, order, Axis(axis)).unwrap();
     let v = kr / (2.0 * PI);
     let expected_ht = generalised_top_hat(v.view(), a, order);
     let expected_ht_array = if axis == 0 {
@@ -64,7 +64,7 @@ fn test_top_hat(
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
     let f = generalised_top_hat(radius.view(), a, order);
-    let (kr, actual_ht) = qdht(radius, &f, order, Axis(0));
+    let (kr, actual_ht) = qdht(radius, &f, order, Axis(0)).unwrap();
     let v = kr / (2.0 * PI);
     let expected_ht = generalised_jinc(v.view(), a, order);
     let error = expected_ht.mean_abs_err(&actual_ht).unwrap();
@@ -77,7 +77,7 @@ fn test_gaussian(#[values(2.0, 5.0, 10.0)] a: f64, radius: Array1<f64>) {
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
     let f = (-a.powi(2) * radius.powi(2)).exp();
-    let (kr, actual_ht) = qdht(radius, &f, 0, Axis(0));
+    let (kr, actual_ht) = qdht(radius, &f, 0, Axis(0)).unwrap();
     let expected_ht =
         2.0 * PI * (1.0 / (2.0 * a.powi(2))) * (-kr.powi(2) / (4.0 * a.powi(2))).exp();
     assert_arrays_equal(&expected_ht, &actual_ht, 1e-8, 1e-5);
@@ -90,7 +90,7 @@ fn test_inverse_gaussian(#[values(2.0, 5.0, 10.0)] a: f64) {
     // scaling of the magnitude.
     let kr = Array1::linspace(0.0, 200.0, 1024);
     let ht = 2.0 * PI * (1.0 / (2.0 * a.powi(2))) * (-kr.powi(2) / (4.0 * a.powi(2))).exp();
-    let (r, actual_f) = iqdht(kr, &ht, 0, Axis(0));
+    let (r, actual_f) = iqdht(kr, &ht, 0, Axis(0)).unwrap();
     let expected_f = (-a.powi(2) * r.powi(2)).exp();
     assert_arrays_equal(&expected_f, &actual_f, 1e-8, 1e-5);
 }
@@ -108,7 +108,7 @@ fn test_gaussian_2d(#[values(0, 1)] axis: usize, radius: Array1<f64>) {
     let a_reshaped = a.to_shape(dims_a).unwrap();
     let r_reshaped = radius.to_shape(dims_r).unwrap();
     let f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
-    let (kr, actual_ht) = qdht(radius, &f, 0, Axis(axis));
+    let (kr, actual_ht) = qdht(radius, &f, 0, Axis(axis)).unwrap();
     let kr_reshaped = kr.to_shape(dims_r).unwrap();
     let expected_ht = 2.0
         * PI
@@ -132,7 +132,7 @@ fn test_inverse_gaussian_2d(#[values(0, 1)] axis: usize) {
     let kr_reshaped: CowArray<f64, Dim<[usize; 2]>> = kr.to_shape(dims_r).unwrap();
     let term: Array2<f64> = -kr_reshaped.powi(2) / (4.0 * a_reshaped.powi(2));
     let ht: Array2<f64> = 2.0 * PI * (1.0 / (2.0 * a_reshaped.powi(2))) * term.exp();
-    let (r, actual_f) = iqdht(kr, &ht, 0, Axis(axis));
+    let (r, actual_f) = iqdht(kr, &ht, 0, Axis(axis)).unwrap();
     let r_reshaped = r.to_shape(dims_r).unwrap();
     let expected_f = (-a_reshaped.powi(2) * r_reshaped.powi(2)).exp();
     assert_arrays_equal(&expected_f, &actual_f, 1e-8, 1e-5);
@@ -145,7 +145,7 @@ fn test_1_over_r2_plus_z2(#[values(2.0, 1.0, 0.5)] a: f64) {
     // scaling of the magnitude.
     let r = Array1::linspace(0.0, 50.0, 1024);
     let f = 1.0 / (r.powi(2) + a.powi(2));
-    let (kr, actual_ht) = qdht(r, &f, 0, Axis(0));
+    let (kr, actual_ht) = qdht(r, &f, 0, Axis(0)).unwrap();
     let expected_ht = 2.0 * PI * (a * kr).mapv_into(|v| bessel_k(0, v).unwrap());
     // as this diverges at zero, the first few entries have higher errors, so ignore them
     let expected_ht = expected_ht.slice(s![10..]);
@@ -164,9 +164,9 @@ fn test_jinc_equivalence(
     radius: Array1<f64>,
 ) {
     let f = generalised_jinc(radius.view(), a, order);
-    let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0));
+    let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0)).unwrap();
 
-    let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let transformer = HankelTransform::new_from_r_grid(order, radius).unwrap();
     let f_t = generalised_jinc(transformer.radius(), a, order);
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-8, 1e-5);
@@ -180,8 +180,8 @@ fn test_top_hat_equivalence(
     radius: Array1<f64>,
 ) {
     let f = generalised_top_hat(radius.view(), a, order);
-    let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0));
-    let transformer = HankelTransform::new_from_r_grid(order, radius);
+    let (_, one_shot_ht) = qdht(radius.clone(), &f, order, Axis(0)).unwrap();
+    let transformer = HankelTransform::new_from_r_grid(order, radius).unwrap();
     let f_t = generalised_top_hat(transformer.radius(), a, order);
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-8, 1e-5);
@@ -193,8 +193,8 @@ fn test_gaussian_equivalence(#[values(2.0, 5.0, 10.0)] a: f64, radius: Array1<f6
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
     let f = (-a.powi(2) * radius.powi(2)).exp();
-    let (_, one_shot_ht) = qdht(radius.clone(), &f, 0, Axis(0));
-    let transformer = HankelTransform::new_from_r_grid(0, radius);
+    let (_, one_shot_ht) = qdht(radius.clone(), &f, 0, Axis(0)).unwrap();
+    let transformer = HankelTransform::new_from_r_grid(0, radius).unwrap();
     let f_t = (-a.powi(2) * transformer.radius().powi(2)).exp();
     let standard_ht = transformer.qdht(&f_t, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-4, 1e-3);
@@ -205,7 +205,7 @@ fn test_1_over_r2_plus_z2_equivalence(#[values(2.0, 1.0, 0.1)] a: f64) {
     let r = Array1::linspace(0.0, 50.0, 1024);
     let f = 1.0 / (r.powi(2) + a.powi(2));
 
-    let transformer = HankelTransform::new_from_r_grid(0, r.clone());
+    let transformer = HankelTransform::new_from_r_grid(0, r.clone()).unwrap();
 
     let f_transformer = 1.0 / (transformer.radius().powi(2) + a.powi(2));
     assert_arrays_equal(
@@ -214,7 +214,7 @@ fn test_1_over_r2_plus_z2_equivalence(#[values(2.0, 1.0, 0.1)] a: f64) {
         1e-6,
         1e-2,
     );
-    let (kr, one_shot_ht) = qdht(r, &f, 0, Axis(0));
+    let (kr, one_shot_ht) = qdht(r, &f, 0, Axis(0)).unwrap();
     assert_arrays_equal(&kr, transformer.kr(), 1e-8, 1e-5);
     let standard_ht = transformer.qdht(&f_transformer, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-2, 1e-3);
