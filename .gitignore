@@ -3,3 +3,4 @@ profile.json
 .DS_Store
 docs/book/*
 docs/src/images/*
+baselines.txt

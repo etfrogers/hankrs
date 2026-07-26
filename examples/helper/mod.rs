@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+#[cfg(feature = "blas")]
 extern crate blas_src;
 use ndarray::{Array1, ArrayView1, ArrayView2};
 use plotters::prelude::*;

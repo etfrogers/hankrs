@@ -1,3 +1,4 @@
+#[cfg(feature = "blas")]
 extern crate blas_src;
 use std::f64::{INFINITY, consts::PI};
 

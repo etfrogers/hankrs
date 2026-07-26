@@ -11,6 +11,7 @@
 //!
 //! ## Quick Start
 //! ```rust
+//! # #[cfg(feature = "blas")]
 //! # extern crate blas_src;
 //! use hankrs::HankelTransform;
 //! use ndarray::{Array1, Axis};
