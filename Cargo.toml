@@ -1,6 +1,6 @@
 [package]
 name = "hankrs"
-version = "0.2.1"
+version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "An implementation of quasi-discrete Hankel transforms in Rust"
