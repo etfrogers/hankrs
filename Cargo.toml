@@ -3,15 +3,27 @@ name = "hankrs"
 version = "0.2.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "An implementation of quasi-discrete hankel transforms in rust"
+description = "An implementation of quasi-discrete Hankel transforms in Rust"
+readme = "README.md"
+documentation = "https://docs.rs/hankrs"
+homepage = "https://etfrogers.github.io/hankrs/"
 repository = "https://github.com/etfrogers/hankrs"
-keywords = ["hankel-transforms", "quasi-discrete"]
+keywords = ["hankel", "hankel-transform", "qdht", "optics", "physics"]
 authors = ["Edward Rogers <etfrogers@hotmail.com>"]
 categories = ["science", "mathematics"]
+exclude = [
+        ".github",
+        ".vscode",
+        "bench_commits.sh",
+        "baselines.txt",
+        "docs/book",
+    ]
 
 [features]
-
 blas = ["ndarray/blas"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 ndarray = { version = "0.16", features = ["approx", "rayon"] }
