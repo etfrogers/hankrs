@@ -1,3 +1,6 @@
+#[cfg(feature = "blas")]
+extern crate blas_src;
+
 use hankrs::{HankelError, HankelTransform};
 use ndarray::array;
 
@@ -51,4 +54,20 @@ fn test_error_invalid_order() {
     // Negative order for spherical transform should return InvalidOrder
     let result = HankelTransform::new_spherical(-1, 10.0, 256);
     assert_eq!(result, Err(HankelError::InvalidOrder));
+}
+
+#[test]
+#[should_panic(expected = "does not match transformer n_points")]
+fn test_panic_qdht_dimension_mismatch() {
+    let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
+    let wrong_size_data = array![1.0, 2.0, 3.0]; // len 3 != 256
+    transformer.qdht(&wrong_size_data, ndarray::Axis(0));
+}
+
+#[test]
+#[should_panic(expected = "does not match transformer n_points")]
+fn test_panic_iqdht_dimension_mismatch() {
+    let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
+    let wrong_size_data = array![1.0, 2.0, 3.0]; // len 3 != 256
+    transformer.iqdht(&wrong_size_data, ndarray::Axis(0));
 }

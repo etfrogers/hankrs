@@ -783,6 +783,9 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Function in frequency space (sampled at `self.v`).
+    ///
+    /// # Panics
+    /// Panics if the length of `fr` along `axis` does not match [`HankelTransform::n_points`].
     pub fn qdht<T: HankelScalar, D: Dimension + RemoveAxis, S>(
         &self,
         fr: &ArrayBase<S, D>,
@@ -812,6 +815,9 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Radial function (sampled at `self.r`) = IHT(fv).
+    ///
+    /// # Panics
+    /// Panics if the length of `fv` along `axis` does not match [`HankelTransform::n_points`].
     pub fn iqdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fv: &ArrayBase<S, D>,
@@ -833,6 +839,15 @@ impl HankelTransform {
     where
         S: Data<Elem = T>,
     {
+        assert_eq!(
+            f.len_of(axis),
+            self.n_points,
+            "Input array length along axis {:?} ({}) does not match transformer n_points ({})",
+            axis,
+            f.len_of(axis),
+            self.n_points
+        );
+
         let mut transform = Array::zeros(f.dim());
 
         // 1. Swap into_iter() for into_par_iter() on both lanes
