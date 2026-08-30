@@ -30,6 +30,17 @@ static TRANSFORMERS: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
     ]
 });
 
+static TRANSFORMERS_K: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
+    let k_grid = radius().mapv(|r| r / 10.0);
+    [
+        HankelTransform::new_from_k_grid(0, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(1, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(2, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(3, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(4, k_grid).unwrap(),
+    ]
+});
+
 fn random_array_like<D: Dimension>(v: ArrayView<f64, D>) -> Array<f64, D> {
     random_array(v.raw_dim())
 }
@@ -165,8 +176,7 @@ fn test_round_trip_k_interpolation(
 ) {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let k_grid = radius.mapv(|r| r / 10.0);
-    let transformer = HankelTransform::new_from_k_grid(order, k_grid).unwrap();
+    let transformer = &TRANSFORMERS_K[order as usize];
 
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_k(&fun).unwrap();
@@ -679,12 +689,11 @@ fn test_round_trip_r_interpolation_2d_complex(
 #[rstest]
 fn test_round_trip_k_interpolation_2d(
     shape: Shape,
-    radius: Array1<f64>,
     #[values(0, 1, 2, 3, 4)] order: i32,
     #[values(0, 1)] axis: usize,
 ) {
-    let k_grid = &radius / 10.0;
-    let transformer = HankelTransform::new_from_k_grid(order, k_grid.clone()).unwrap();
+    let transformer = &TRANSFORMERS_K[order as usize];
+    let k_grid = transformer.original_k_grid().unwrap();
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
