@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // Now take the Hankel transform using `qdht`:
-    let (kr, ht) = qdht(r.clone(), &f, 0, Axis(0));
+    let (kr, ht) = qdht(r.clone(), &f, 0, Axis(0)).unwrap();
 
     // As expected, this is a top-hat function bandlimited to k<1, except for numerical error.
     plot_1d(
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // Transform
-    let (kr2, ht2) = qdht(r2.clone(), &f2, 0, Axis(0));
+    let (kr2, ht2) = qdht(r2.clone(), &f2, 0, Axis(0)).unwrap();
 
     plot_1d(
         "one_shot_example_jinc.png",

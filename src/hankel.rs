@@ -9,19 +9,30 @@ use ndarray_stats::QuantileExt;
 use rayon::prelude::*;
 use roots::{SimpleConvergency, find_root_brent};
 use std::f64::consts::FRAC_PI_2;
-use std::fmt::Display;
+
 use std::{f64::consts::PI, fmt::Debug};
 use thiserror::Error;
 
 use amos_bessel_rs::bessel_j;
 use bessel_zeros::{BesselFunType, fast::bessel_zeros};
 use ndarray::ArrayView1;
-use num::Zero;
 use num_complex::Complex;
+use num_traits::Zero;
 use real_bessel::jn as bessel_j_real;
 
 /// A trait for scalar types that can be processed by the Hankel transform.
-/// It abstracts over basic array arithmetic and matrix multiplications.
+///
+/// Under the hood, the QDHT algorithm computes Hankel transforms using purely real matrices
+/// (specifically the Bessel roots and zero values). However, input functions often
+/// represent optical fields or physical quantities that are complex-valued (`Complex<f64>`).
+///
+/// `HankelScalar` bridges this gap by abstracting over basic array arithmetic,
+/// matrix multiplications, and interpolation, allowing the exact same underlying mathematical
+/// logic to seamlessly process both `f64` (real) and `Complex<f64>` (complex) input arrays.
+///
+/// # Implementations
+/// This trait is already implemented for `f64` and `num_complex::Complex<f64>`. You generally
+/// will not need to implement this yourself unless you are passing custom scalar types into the transform.
 pub trait HankelScalar: Clone + Zero + Send + Sync {
     /// Multiplies a purely real transform matrix with a vector of this scalar type.
     fn dot_real_matrix(matrix: ArrayView2<f64>, vector: ArrayView1<Self>) -> Array1<Self>;
@@ -138,7 +149,7 @@ impl HankelScalar for Complex<f64> {
 /// use hankrs::HankelTransform;
 /// use ndarray::{Array1, Axis};
 ///
-/// let transformer = HankelTransform::new(0, 10.0, 256);
+/// let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
 /// let r = transformer.radius();
 /// let f = r.mapv(|rad| (-rad * rad).exp());
 ///
@@ -172,7 +183,7 @@ impl HankelScalar for Complex<f64> {
 /// > J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
 ///
 /// The algorithm also uses root finding to calculate the roots of the bessel function.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct HankelTransform {
     /// Transform order `p`
     order: i32,
@@ -256,7 +267,7 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
-    pub fn new(order: i32, max_radius: f64, n_points: usize) -> Self {
+    pub fn new(order: i32, max_radius: f64, n_points: usize) -> Result<Self, HankelError> {
         Self::build(
             order,
             n_points,
@@ -275,7 +286,7 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
-    pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
+    pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
             radial_grid.len(),
@@ -294,7 +305,7 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
-    pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
+    pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
             k_grid.len(),
@@ -315,7 +326,11 @@ impl HankelTransform {
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
     /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
-    pub fn new_spherical(order: i32, max_radius: f64, n_points: usize) -> Self {
+    pub fn new_spherical(
+        order: i32,
+        max_radius: f64,
+        n_points: usize,
+    ) -> Result<Self, HankelError> {
         Self::build(
             order,
             n_points,
@@ -338,7 +353,10 @@ impl HankelTransform {
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
     /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
-    pub fn new_spherical_from_r_grid(order: i32, radial_grid: Array1<f64>) -> HankelTransform {
+    pub fn new_spherical_from_r_grid(
+        order: i32,
+        radial_grid: Array1<f64>,
+    ) -> Result<Self, HankelError> {
         Self::build(
             order,
             radial_grid.len(),
@@ -361,7 +379,7 @@ impl HankelTransform {
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
     /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
-    pub fn new_spherical_from_k_grid(order: i32, k_grid: Array1<f64>) -> Self {
+    pub fn new_spherical_from_k_grid(order: i32, k_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
             k_grid.len(),
@@ -379,7 +397,13 @@ impl HankelTransform {
         original_radial_grid: Option<Array1<f64>>,
         original_k_grid: Option<Array1<f64>>,
         transform_type: TransformType,
-    ) -> Self {
+    ) -> Result<Self, HankelError> {
+        if n_points == 0 {
+            return Err(HankelError::EmptyGrid);
+        }
+        if transform_type == TransformType::Spherical && order < 0 {
+            return Err(HankelError::InvalidOrder);
+        }
         let zero_fun: fn(i32, usize) -> Array1<f64> = match transform_type {
             TransformType::Polar => |order: i32, n_points| {
                 Array1::from_vec(bessel_zeros(BesselFunType::J, order, n_points, 1e-6))
@@ -396,15 +420,18 @@ impl HankelTransform {
 
         let max_radius = match (max_radius, &original_radial_grid, &original_k_grid) {
             (Some(mr), None, None) => mr,
-            (None, Some(rg), None) => *rg.max().unwrap(),
+            (None, Some(rg), None) => *rg.max().map_err(|_| HankelError::EmptyGrid)?,
             (None, None, Some(kg)) => {
-                let v_max = kg.max().unwrap() / (2.0 * PI);
+                let v_max = kg.max().map_err(|_| HankelError::EmptyGrid)? / (2.0 * PI);
                 alpha_n1 / (2.0 * PI * v_max)
             }
             _ => unreachable!(
-                "Invaritant violated: exactly one of max_radius, original_radial_grid, or original_k_grid must be supplied"
+                "Invariant violated: exactly one of max_radius, original_radial_grid, or original_k_grid must be supplied"
             ),
         };
+        if max_radius <= 0.0 || max_radius.is_nan() {
+            return Err(HankelError::InvalidRadius);
+        }
         // Calculate co-ordinate vectors
         let r = alpha.clone() * max_radius / alpha_n1;
         let v = alpha.clone() / (2.0 * PI * max_radius);
@@ -455,7 +482,7 @@ impl HankelTransform {
             }
         }
 
-        Self {
+        Ok(Self {
             order,
             n_points,
             max_radius,
@@ -469,7 +496,7 @@ impl HankelTransform {
             t,
             jr,
             jv,
-        }
+        })
     }
 
     /// Returns the order `p` of the transform.
@@ -482,12 +509,12 @@ impl HankelTransform {
         self.max_radius
     }
 
-    /// Returns the maximum radius `r_max` of the transform.
+    /// Returns the maximum radial wavenumber `kr_max` of the transform.
     pub fn max_kr(&self) -> f64 {
         self.max_kr
     }
 
-    /// Returns the maximum radius `r_max` of the transform.
+    /// Returns the maximum frequency `v_max` of the transform.
     pub fn max_frequency(&self) -> f64 {
         self.max_v
     }
@@ -535,7 +562,7 @@ impl HankelTransform {
     pub fn to_transform_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, InterpError> {
+    ) -> Result<Array1<T>, HankelError> {
         self.to_transform_r_nd(function, Axis(0))
     }
 
@@ -554,18 +581,18 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, InterpError>
+    ) -> Result<Array<T, D>, HankelError>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         if let Some(r_grid) = self.original_radial_grid() {
             Ok(T::spline(r_grid, function.view(), self.r.view(), axis))
         } else {
-            Err(InterpError {
-                message: "Attempted to interpolate onto transform radial grid on HankelTransform \
+            Err(HankelError::Interpolation(
+                "Attempted to interpolate onto transform radial grid on HankelTransform \
                     object that was not constructed with a radial grid"
                     .to_string(),
-            })
+            ))
         }
     }
 
@@ -587,7 +614,7 @@ impl HankelTransform {
     pub fn to_original_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, InterpError> {
+    ) -> Result<Array1<T>, HankelError> {
         self.to_original_r_nd(function, Axis(0))
     }
 
@@ -606,7 +633,7 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, InterpError>
+    ) -> Result<Array<T, D>, HankelError>
     where
         D: Dimension + RemoveAxis,
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
@@ -615,11 +642,11 @@ impl HankelTransform {
         if let Some(r_grid) = self.original_radial_grid() {
             Ok(T::spline(self.r.view(), function.view(), r_grid, axis))
         } else {
-            Err(InterpError {
-                message: "Attempted to interpolate onto original_radial_grid on HankelTransform \
-                    object that was not constructed with a r_grid"
+            Err(HankelError::Interpolation(
+                "Attempted to interpolate onto original_radial_grid on HankelTransform \
+                    object that was not constructed with a radial grid"
                     .to_string(),
-            })
+            ))
         }
     }
 
@@ -639,11 +666,11 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to
-    /// [`HankelTransform::qdht`] (sampled at `self.kr`).
+    /// [`HankelTransform::iqdht`] (sampled at `self.kr`).
     pub fn to_transform_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, InterpError> {
+    ) -> Result<Array1<T>, HankelError> {
         self.to_transform_k_nd(function, Axis(0))
     }
 
@@ -662,7 +689,7 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, InterpError>
+    ) -> Result<Array<T, D>, HankelError>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
         S: Data<Elem = T>,
@@ -671,16 +698,16 @@ impl HankelTransform {
         if let Some(k_grid) = self.original_k_grid() {
             Ok(T::spline(k_grid, function.view(), self.kr.view(), axis))
         } else {
-            Err(InterpError {
-                message: "Attempted to interpolate onto transform k grid on HankelTransform \
+            Err(HankelError::Interpolation(
+                "Attempted to interpolate onto transform k grid on HankelTransform \
                     object that was not constructed with a k_grid"
                     .to_string(),
-            })
+            ))
         }
     }
 
     /// Interpolate a function, assumed to have been given at the Hankel transform points
-    /// `self.k` (as returned by [`HankelTransform::qdht`]) back onto the original grid
+    /// `self.kr` (as returned by [`HankelTransform::qdht`]) back onto the original grid
     /// used to construct the [`HankelTransform`] object.
     ///
     /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
@@ -688,8 +715,8 @@ impl HankelTransform {
     /// This method provides a convenient way of doing this.
     ///
     /// # Arguments
-    /// * `function` - The function to be interpolated. Specified at the radial points
-    ///   `self.k`.
+    /// * `function` - The function to be interpolated. Specified at the wavenumber points
+    ///   `self.kr`.
     /// * `axis` - Axis representing the frequency dependence of `function`.
     ///
     /// # Returns
@@ -697,7 +724,7 @@ impl HankelTransform {
     pub fn to_original_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
-    ) -> Result<Array1<T>, InterpError> {
+    ) -> Result<Array1<T>, HankelError> {
         self.to_original_k_nd(function, Axis(0))
     }
 
@@ -716,7 +743,7 @@ impl HankelTransform {
         &self,
         function: &ArrayBase<S, D>,
         axis: Axis,
-    ) -> Result<Array<T, D>, InterpError>
+    ) -> Result<Array<T, D>, HankelError>
     where
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
         D: Dimension + RemoveAxis,
@@ -725,11 +752,11 @@ impl HankelTransform {
         if let Some(k_grid) = self.original_k_grid() {
             Ok(T::spline(self.kr.view(), function.view(), k_grid, axis))
         } else {
-            Err(InterpError {
-                message: "Attempted to interpolate onto original_k_grid on HankelTransform \
-                    object that was not constructed with a k grid"
+            Err(HankelError::Interpolation(
+                "Attempted to interpolate onto original_k_grid on HankelTransform \
+                    object that was not constructed with a k_grid"
                     .to_string(),
-            })
+            ))
         }
     }
 
@@ -756,6 +783,9 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Function in frequency space (sampled at `self.v`).
+    ///
+    /// # Panics
+    /// Panics if the length of `fr` along `axis` does not match [`HankelTransform::n_points`].
     pub fn qdht<T: HankelScalar, D: Dimension + RemoveAxis, S>(
         &self,
         fr: &ArrayBase<S, D>,
@@ -785,6 +815,9 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Radial function (sampled at `self.r`) = IHT(fv).
+    ///
+    /// # Panics
+    /// Panics if the length of `fv` along `axis` does not match [`HankelTransform::n_points`].
     pub fn iqdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fv: &ArrayBase<S, D>,
@@ -806,6 +839,15 @@ impl HankelTransform {
     where
         S: Data<Elem = T>,
     {
+        assert_eq!(
+            f.len_of(axis),
+            self.n_points,
+            "Input array length along axis {:?} ({}) does not match transformer n_points ({})",
+            axis,
+            f.len_of(axis),
+            self.n_points
+        );
+
         let mut transform = Array::zeros(f.dim());
 
         // 1. Swap into_iter() for into_par_iter() on both lanes
@@ -905,21 +947,29 @@ where
     result
 }
 
-/// An error that occurs when trying to interpolate onto a transform grid (k or r)
-/// on a HankelTransform object that was not constructed with a such a grid.
-#[derive(Debug, Clone, Error, Default)]
-pub struct InterpError {
-    message: String,
+/// An error that occurs during Hankel transform operations.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum HankelError {
+    /// Indicates that a supplied grid was empty.
+    #[error("Grid must contain at least one point")]
+    EmptyGrid,
+    /// Indicates that the maximum radius derived or provided was zero or negative.
+    #[error("Maximum radius must be greater than zero")]
+    InvalidRadius,
+    /// An error that occurs when trying to interpolate onto a transform grid (k or r)
+    /// on a HankelTransform object that was not constructed with such a grid.
+    #[error("Interpolation failed: {0}")]
+    Interpolation(String),
+    /// Indicates that the order of the Hankel transform is invalid.
+    #[error("For a spherical Hankel transform, the order must be non-negative")]
+    InvalidOrder,
 }
 
-impl Display for InterpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error trying to interpolate: {}", self.message)
-    }
-}
-
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 enum TransformType {
+    /// Indicates a polar Hankel transform.
     Polar,
+    /// Indicates a spherical Hankel transform.
     Spherical,
 }
 

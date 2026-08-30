@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Now plot the values of the hankel transform and the dynamical error as in figure 1
     // for order 1 and 4
     for &p in &[1, 4] {
-        let transformer = HankelTransform::new(p, 3.0, 256);
+        let transformer = HankelTransform::new(p, 3.0, 256).unwrap();
         let gamma = 5.0;
         let r = transformer.radius();
         let func = sinc(r.mapv(|rad| 2.0 * PI * gamma * rad).view());
@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a = 1.0;
 
     // We'll just do 1024 points for the example
-    let transformer = HankelTransform::new(p, 2.0, 1024);
+    let transformer = HankelTransform::new(p, 2.0, 1024).unwrap();
     let r = transformer.radius();
     let func = r.mapv(|rad| if rad <= a { rad.powi(p) } else { 0.0 });
 
@@ -170,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_abs_diff_eq!(error_1, 2.15e-14, epsilon = 1e-15);
 
     // Now repeat for 512 points
-    let transformer_512 = HankelTransform::new(p, 2.0, 512);
+    let transformer_512 = HankelTransform::new(p, 2.0, 512).unwrap();
     let r_512 = transformer_512.radius();
     let func_512 = r_512.mapv(|rad| if rad <= a { rad.powi(p) } else { 0.0 });
 

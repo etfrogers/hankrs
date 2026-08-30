@@ -34,12 +34,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First we try a Gaussian function, the Hankel transform of which should also be Gaussian.
     //
     // Note the definition in Guizar-Sicairos varies from that used by
-    // Pissens by a factor of 2\pi in both scaling of the argument (so we use
+    // Piessens by a factor of 2\pi in both scaling of the argument (so we use
     // HankelTransform.kr rather than HankelTransform.v) and also scaling of the magnitude.
     let a = 3.0;
     let radius = Array1::linspace(0.0, 3.0, 1024);
     let f = radius.mapv(|r: f64| (-a * a * r * r).exp());
-    let (kr, actual_ht) = qdht(radius.clone(), &f, 0, Axis(0));
+    let (kr, actual_ht) = qdht(radius.clone(), &f, 0, Axis(0)).unwrap();
 
     let kr_linear = Array1::linspace(0.0, 50.0, 1024);
     let expected_ht =
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Now we repeat for the inverse transform
     let kr2 = Array1::linspace(0.0, 50.0, 1024);
     let ht = kr2.mapv(|k: f64| 2.0 * PI * (1.0 / (2.0 * a * a)) * (-k * k / (4.0 * a * a)).exp());
-    let (r, actual_f) = iqdht(kr2.clone(), &ht, 0, Axis(0));
+    let (r, actual_f) = iqdht(kr2.clone(), &ht, 0, Axis(0)).unwrap();
 
     let r_linear = Array1::linspace(0.0, 1.0, 1024);
     let expected_f = r_linear.mapv(|rad: f64| (-a * a * rad * rad).exp());
@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r3 = Array1::linspace(0.0, 30.0, 1024);
     for (i, &order) in [0, 1, 4].iter().enumerate() {
         let f = generalised_jinc(r3.view(), a_val, order);
-        let (kr, actual_ht) = qdht(r3.clone(), &f, order, Axis(0));
+        let (kr, actual_ht) = qdht(r3.clone(), &f, order, Axis(0)).unwrap();
         let v = kr.mapv(|k| k / (2.0 * PI));
 
         let v_linear = Array1::linspace(0.0, 1.5, 1024);
@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for (i, &order) in [0, 1, 4].iter().enumerate() {
-        let transformer = HankelTransform::new(order, 2.0, 1024);
+        let transformer = HankelTransform::new(order, 2.0, 1024).unwrap();
         let f = generalised_top_hat(transformer.radius(), a_val, order);
         let actual_ht = transformer.qdht(&f, Axis(0));
         let v = transformer.frequency();
@@ -199,7 +199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // Note again the scaling factor of 2\pi.
     let a5 = 1.0;
-    let transformer = HankelTransform::new(0, 50.0, 1024);
+    let transformer = HankelTransform::new(0, 50.0, 1024).unwrap();
     let f5 = transformer.radius().mapv(|r| 1.0 / (r * r + a5 * a5));
     let actual_ht = transformer.qdht(&f5, Axis(0));
     let kr_grid = transformer.kr();

@@ -17,7 +17,7 @@
 //! use ndarray::{Array1, Axis};
 //!
 //! // 1. Create a transformer for order 0 up to radius 10.0 with 256 points
-//! let transformer = HankelTransform::new(0, 10.0, 256);
+//! let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
 //!
 //! // 2. Define a function on the generated radial grid `transformer.radius()`
 //! let r = transformer.radius();
@@ -29,7 +29,7 @@
 //! // The transformed values are evaluated at `transformer.kr()` (or `transformer.frequency()`)
 //! ```
 
-// Not using BLAS increae timr by 4% on a qdht with 256 points, and 233% on a qdht with 1024 points
+// Not using BLAS increases time by 4% on a qdht with 256 points, and 233% on a qdht with 1024 points
 // Using bessel_zeros fast mode, and real_bessel, speeds up creation by a factor of 4.
 #![warn(missing_docs)]
 
@@ -39,7 +39,7 @@ mod hankel;
 pub mod one_shot;
 
 /// The primary struct used for computing Hankel transforms.
-pub use hankel::{HankelScalar, HankelTransform, InterpError};
+pub use hankel::{HankelError, HankelScalar, HankelTransform};
 
 #[cfg(test)]
 pub(crate) use hankel::{spherical_jn, spherical_jn_zeros};

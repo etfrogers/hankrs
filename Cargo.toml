@@ -1,35 +1,43 @@
 [package]
 name = "hankrs"
-version = "0.2.1"
+version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "An implementation of quasi-discrete hankel transforms in rust"
+description = "An implementation of quasi-discrete Hankel transforms in Rust"
+readme = "README.md"
+documentation = "https://docs.rs/hankrs"
+homepage = "https://etfrogers.github.io/hankrs/"
 repository = "https://github.com/etfrogers/hankrs"
-keywords = ["hankel-transforms", "quasi-discrete"]
+keywords = ["hankel", "hankel-transform", "qdht", "optics", "physics"]
 authors = ["Edward Rogers <etfrogers@hotmail.com>"]
 categories = ["science", "mathematics"]
+exclude = [
+        ".github",
+        ".vscode",
+        "bench_commits.sh",
+        "baselines.txt",
+        "docs/book",
+    ]
 
 [features]
-
 blas = ["ndarray/blas"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 ndarray = { version = "0.16", features = ["approx", "rayon"] }
 ndarray-stats = "0.6.0"
-conv = "0.3.3"
 num-complex = "0.4.6"
-csv = "1.4.0"
 approx = "0.5.1"
 ndarray-interp = "0.5.0"
-rand = "0.9.2"
 amos-bessel-rs = "0.3.0"
 real-bessel = "0.1.0"
 bessel-zeros = "0.2.0"
-num = "0.4.3"
-rstest_reuse = "0.7.0"
 rayon = "1.12.0"
 thiserror = "2.0.18"
 roots = "0.0.8"
+num-traits = "0.2.19"
 
 # 1. Use Apple Accelerate when testing on a Mac
 [target.'cfg(target_os = "macos")'.dev-dependencies]
@@ -42,8 +50,10 @@ openblas-src = { version = "0.10", default-features = false, features = ["system
 
 [dev-dependencies]
 rstest = "0.26.1"
+rstest_reuse = "0.7.0"
 plotters = "0.3.7"
 criterion = "0.5"
+rand = "0.9.2"
 
 [profile.profiling]
 inherits = "release"

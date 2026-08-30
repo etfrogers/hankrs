@@ -2,7 +2,7 @@
 
 Below we demonstrate a range of known Hankel transform pairs from various sources.
 
-First we demonstrate the Gaussian function from Pissens [1] and its inverse transform.
+First we demonstrate the Gaussian function from Piessens [1] and its inverse transform.
 
 Then we check the "generalised top-hat" and "generalised jinc" functions from Guizar-Sicairos and Guitierrez-Vega [2].
 

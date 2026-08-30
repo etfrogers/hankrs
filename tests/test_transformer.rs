@@ -7,8 +7,8 @@ use hankrs::HankelTransform;
 use ndarray::ArrayView1;
 use ndarray::{Array, Array1, ArrayView, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
-use num::pow::Pow;
 use num_complex::Complex64;
+use num_traits::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
@@ -22,11 +22,22 @@ use crate::utils::assert_arrays_equal;
 
 static TRANSFORMERS: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
     [
-        HankelTransform::new_from_r_grid(0, radius()),
-        HankelTransform::new_from_r_grid(1, radius()),
-        HankelTransform::new_from_r_grid(2, radius()),
-        HankelTransform::new_from_r_grid(3, radius()),
-        HankelTransform::new_from_r_grid(4, radius()),
+        HankelTransform::new_from_r_grid(0, radius()).unwrap(),
+        HankelTransform::new_from_r_grid(1, radius()).unwrap(),
+        HankelTransform::new_from_r_grid(2, radius()).unwrap(),
+        HankelTransform::new_from_r_grid(3, radius()).unwrap(),
+        HankelTransform::new_from_r_grid(4, radius()).unwrap(),
+    ]
+});
+
+static TRANSFORMERS_K: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
+    let k_grid = radius().mapv(|r| r / 10.0);
+    [
+        HankelTransform::new_from_k_grid(0, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(1, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(2, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(3, k_grid.clone()).unwrap(),
+        HankelTransform::new_from_k_grid(4, k_grid).unwrap(),
     ]
 });
 
@@ -73,7 +84,7 @@ fn smooth_shapes(#[case] shape: Shape) {}
 #[once]
 fn transformer_zero_order(radius: Array1<f64>) -> HankelTransform {
     let order = 0;
-    HankelTransform::new_from_r_grid(order, radius)
+    HankelTransform::new_from_r_grid(order, radius).unwrap()
 }
 
 #[rstest]
@@ -90,7 +101,7 @@ fn test_getters(transformer_zero_order: &HankelTransform) {
 fn test_errors(radius: Array1<f64>) {
     let fun = random_array_like(radius.view());
 
-    let transformer = HankelTransform::new(0, 3.0, 256);
+    let transformer = HankelTransform::new(0, 3.0, 256).unwrap();
     assert!(transformer.to_original_r(&fun).is_err());
     assert!(transformer.to_original_k(&fun).is_err());
     assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
@@ -98,7 +109,7 @@ fn test_errors(radius: Array1<f64>) {
     assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_err());
     assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_err());
 
-    let transformer = HankelTransform::new_from_r_grid(0, radius.clone());
+    let transformer = HankelTransform::new_from_r_grid(0, radius.clone()).unwrap();
     assert!(transformer.to_original_r(&fun).is_ok());
     assert!(transformer.to_original_k(&fun).is_err());
     assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_ok());
@@ -106,7 +117,7 @@ fn test_errors(radius: Array1<f64>) {
     assert!(transformer.to_transform_r_nd(&fun, Axis(0)).is_ok());
     assert!(transformer.to_transform_k_nd(&fun, Axis(0)).is_err());
 
-    let transformer = HankelTransform::new_from_k_grid(0, radius);
+    let transformer = HankelTransform::new_from_k_grid(0, radius).unwrap();
     assert!(transformer.to_original_r(&fun).is_err());
     assert!(transformer.to_original_k(&fun).is_ok());
     assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
@@ -165,8 +176,7 @@ fn test_round_trip_k_interpolation(
 ) {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let k_grid = radius.mapv(|r| r / 10.0);
-    let transformer = HankelTransform::new_from_k_grid(order, k_grid);
+    let transformer = &TRANSFORMERS_K[order as usize];
 
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_k(&fun).unwrap();
@@ -222,16 +232,16 @@ fn test_round_trip_with_interpolation(
 fn test_original_rk_grid() {
     let r_1d = Array1::linspace(0.0, 1.0, 10);
     let k_1d = r_1d.clone();
-    let transformer = HankelTransform::new(0, 1., 10);
+    let transformer = HankelTransform::new(0, 1., 10).unwrap();
     assert!(transformer.original_radial_grid().is_none());
     assert!(transformer.original_k_grid().is_none());
 
-    let transformer_r = HankelTransform::new_from_r_grid(0, r_1d);
+    let transformer_r = HankelTransform::new_from_r_grid(0, r_1d).unwrap();
     // no error
     assert!(transformer_r.original_radial_grid().is_some());
     assert!(transformer_r.original_k_grid().is_none());
 
-    let transformer_k = HankelTransform::new_from_k_grid(0, k_1d);
+    let transformer_k = HankelTransform::new_from_k_grid(0, k_1d).unwrap();
     // no error
     assert!(transformer_k.original_k_grid().is_some());
     assert!(transformer_k.original_radial_grid().is_none())
@@ -266,12 +276,14 @@ fn intensity(v: f64) -> f64 {
     v.abs().powf(2.0)
 }
 
+type TransformFunc = dyn Fn(ArrayView1<f64>, f64, i32) -> Array1<f64>;
+
 #[rstest]
 #[case("Jinc", &generalised_jinc)]
 #[case("Top Hat", &generalised_top_hat)]
 fn test_energy_conservation(
     #[case] _shape_name: &str,
-    #[case] func: &dyn Fn(ArrayView1<f64>, f64, i32) -> Array1<f64>,
+    #[case] func: &TransformFunc,
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
     let integrate_over_r = |r: ArrayView1<f64>, y| -> f64 {
@@ -281,7 +293,7 @@ fn test_energy_conservation(
             .sum()
     };
 
-    let transformer = HankelTransform::new(order, 10.0, 1024);
+    let transformer = HankelTransform::new(order, 10.0, 1024).unwrap();
     let fun = func(transformer.radius(), 0.5, order);
 
     let intensity_before = fun.mapv(intensity);
@@ -301,7 +313,7 @@ fn test_energy_conservation(
 #[rstest]
 fn test_jinc(#[values(1.0, 0.7, 0.1)] a: f64, #[values(0, 1, 2, 3, 4)] order_ind: usize) {
     let transformer = &TRANSFORMERS[order_ind];
-    // let transformer = HankelTransform::new_from_r_grid(order, radius);
+    // let transformer = HankelTransform::new_from_r_grid(order, radius).unwrap();
     let order = transformer.order();
     let f = generalised_jinc(transformer.radius(), a, order);
     let expected_ht = generalised_top_hat(transformer.frequency(), a, order);
@@ -348,11 +360,10 @@ fn test_gaussian_complex(
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
 
-    use num::Complex;
     let a2 = a.powi(2);
     let f = transformer_zero_order
         .radius()
-        .mapv(|r| Complex::new((-a2 * r.powi(2)).exp(), 0.0));
+        .mapv(|r| Complex64::new((-a2 * r.powi(2)).exp(), 0.0));
     let expected_ht = transformer_zero_order
         .kr()
         .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());
@@ -436,7 +447,7 @@ fn test1_over_r2_plus_z2(#[values(2.0, 1.0, 0.1)] a: f64) {
     // Note the definition in Guizar-Sicairos varies by 2*pi in
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
-    let transformer = HankelTransform::new(0, 50.0, 1024);
+    let transformer = HankelTransform::new(0, 50.0, 1024).unwrap();
     let f = transformer.radius().mapv(|r| 1.0 / (r.powi(2) + a.powi(2)));
     let expected_ht = transformer
         .kr()
@@ -462,7 +473,7 @@ fn test_sinc(#[values(1, 4)] p: i32) {
       Manuel Guizar-Sicairos and Julio C. Guitierrez-Vega
       J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
     */
-    let transformer = HankelTransform::new(p, 3.0, 256);
+    let transformer = HankelTransform::new(p, 3.0, 256).unwrap();
 
     let frequency = transformer.frequency();
     let gamma = 5.0;
@@ -498,7 +509,7 @@ fn test_sinc(#[values(1, 4)] p: i32) {
 
 #[rstest]
 fn test_debug_impl() {
-    let transformer = HankelTransform::new(1, 3.0, 256);
+    let transformer = HankelTransform::new(1, 3.0, 256).unwrap();
     let debug_str = format!("{:?}", transformer);
     assert!(!debug_str.is_empty());
 }
@@ -560,7 +571,7 @@ fn _plot_stuff(x: ArrayView1<f64>, y1: ArrayView1<f64>, y2: ArrayView1<f64>, p: 
 }
 */
 // ------------------------
-// End Known Transfom pairs
+// End Known Transform pairs
 // ------------------------
 
 #[rstest]
@@ -599,9 +610,9 @@ fn test_r_creation_equivalence(
     #[values(10, 100, 512, 1024)] n_points: usize,
     #[values(0.1, 10.0, 20.0, 1e6)] max_radius: f64,
 ) {
-    let transformer1 = HankelTransform::new(0, max_radius, n_points);
+    let transformer1 = HankelTransform::new(0, max_radius, n_points).unwrap();
     let r = Array1::linspace(0.0, max_radius, n_points);
-    let transformer2 = HankelTransform::new_from_r_grid(0, r);
+    let transformer2 = HankelTransform::new_from_r_grid(0, r).unwrap();
 
     assert_relative_eq!(
         transformer1,
@@ -678,12 +689,11 @@ fn test_round_trip_r_interpolation_2d_complex(
 #[rstest]
 fn test_round_trip_k_interpolation_2d(
     shape: Shape,
-    radius: Array1<f64>,
     #[values(0, 1, 2, 3, 4)] order: i32,
     #[values(0, 1)] axis: usize,
 ) {
-    let k_grid = &radius / 10.0;
-    let transformer = HankelTransform::new_from_k_grid(order, k_grid.clone());
+    let transformer = &TRANSFORMERS_K[order as usize];
+    let k_grid = transformer.original_k_grid().unwrap();
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
@@ -736,7 +746,7 @@ fn test_spherical() {
     let function = r.mapv(|r| (-(r * r) / 2.0).exp());
     let analytical_laplacian = r.mapv(|r| (-(r * r) / 2.0).exp() * (r * r - 3.0));
 
-    let transformer = HankelTransform::new_spherical_from_r_grid(0, r);
+    let transformer = HankelTransform::new_spherical_from_r_grid(0, r).unwrap();
     let resampled_r = transformer.to_transform_r(&function).unwrap();
     let laplacian = transformer.qdht(&resampled_r, Axis(0));
     let laplacian = -laplacian * transformer.kr().mapv(|kr| kr * kr);
@@ -757,7 +767,7 @@ fn test_spherical_gaussian(#[values(0.5, 1.0, 2.0)] a: f64) {
     let r_max = 20.0;
     let n_points = 250;
 
-    let transformer = HankelTransform::new_spherical(0, r_max, n_points);
+    let transformer = HankelTransform::new_spherical(0, r_max, n_points).unwrap();
 
     let function: Array1<f64> = transformer
         .radius()
@@ -787,7 +797,7 @@ fn test_top_hat_spherical(#[values(0.5, 1.0, 2.0)] mut a: f64) {
     let r_max = 20.0;
     let n_points = 1000;
 
-    let transformer = HankelTransform::new_spherical(0, r_max, n_points);
+    let transformer = HankelTransform::new_spherical(0, r_max, n_points).unwrap();
 
     // function = (transformer.r < a).astype(float)
     let function: Array1<f64> = transformer
