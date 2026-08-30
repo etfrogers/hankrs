@@ -45,3 +45,10 @@ fn test_error_interpolation_missing_grid() {
     let result2 = transformer.to_original_r(&some_data);
     assert!(matches!(result2, Err(HankelError::Interpolation(_))));
 }
+
+#[test]
+fn test_error_invalid_order() {
+    // Negative order for spherical transform should return InvalidOrder
+    let result = HankelTransform::new_spherical(-1, 10.0, 256);
+    assert_eq!(result, Err(HankelError::InvalidOrder));
+}

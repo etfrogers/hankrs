@@ -401,6 +401,9 @@ impl HankelTransform {
         if n_points == 0 {
             return Err(HankelError::EmptyGrid);
         }
+        if transform_type == TransformType::Spherical && order < 0 {
+            return Err(HankelError::InvalidOrder);
+        }
         let zero_fun: fn(i32, usize) -> Array1<f64> = match transform_type {
             TransformType::Polar => |order: i32, n_points| {
                 Array1::from_vec(bessel_zeros(BesselFunType::J, order, n_points, 1e-6))
@@ -942,10 +945,16 @@ pub enum HankelError {
     /// on a HankelTransform object that was not constructed with such a grid.
     #[error("Interpolation failed: {0}")]
     Interpolation(String),
+    /// Indicates that the order of the Hankel transform is invalid.
+    #[error("For a spherical Hankel transform, the order must be non-negative")]
+    InvalidOrder,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 enum TransformType {
+    /// Indicates a polar Hankel transform.
     Polar,
+    /// Indicates a spherical Hankel transform.
     Spherical,
 }
 
