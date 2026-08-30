@@ -561,7 +561,7 @@ fn _plot_stuff(x: ArrayView1<f64>, y1: ArrayView1<f64>, y2: ArrayView1<f64>, p: 
 }
 */
 // ------------------------
-// End Known Transfom pairs
+// End Known Transform pairs
 // ------------------------
 
 #[rstest]

@@ -426,7 +426,7 @@ impl HankelTransform {
                 alpha_n1 / (2.0 * PI * v_max)
             }
             _ => unreachable!(
-                "Invaritant violated: exactly one of max_radius, original_radial_grid, or original_k_grid must be supplied"
+                "Invariant violated: exactly one of max_radius, original_radial_grid, or original_k_grid must be supplied"
             ),
         };
         if max_radius <= 0.0 || max_radius.is_nan() {
@@ -509,12 +509,12 @@ impl HankelTransform {
         self.max_radius
     }
 
-    /// Returns the maximum radius `r_max` of the transform.
+    /// Returns the maximum radial wavenumber `kr_max` of the transform.
     pub fn max_kr(&self) -> f64 {
         self.max_kr
     }
 
-    /// Returns the maximum radius `r_max` of the transform.
+    /// Returns the maximum frequency `v_max` of the transform.
     pub fn max_frequency(&self) -> f64 {
         self.max_v
     }
@@ -644,7 +644,7 @@ impl HankelTransform {
         } else {
             Err(HankelError::Interpolation(
                 "Attempted to interpolate onto original_radial_grid on HankelTransform \
-                    object that was not constructed with a r_grid"
+                    object that was not constructed with a radial grid"
                     .to_string(),
             ))
         }
@@ -666,7 +666,7 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to
-    /// [`HankelTransform::qdht`] (sampled at `self.kr`).
+    /// [`HankelTransform::iqdht`] (sampled at `self.kr`).
     pub fn to_transform_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -707,7 +707,7 @@ impl HankelTransform {
     }
 
     /// Interpolate a function, assumed to have been given at the Hankel transform points
-    /// `self.k` (as returned by [`HankelTransform::qdht`]) back onto the original grid
+    /// `self.kr` (as returned by [`HankelTransform::qdht`]) back onto the original grid
     /// used to construct the [`HankelTransform`] object.
     ///
     /// If the [`HankelTransform`] object was constructed with a (say) equally-spaced
@@ -715,8 +715,8 @@ impl HankelTransform {
     /// This method provides a convenient way of doing this.
     ///
     /// # Arguments
-    /// * `function` - The function to be interpolated. Specified at the radial points
-    ///   `self.k`.
+    /// * `function` - The function to be interpolated. Specified at the wavenumber points
+    ///   `self.kr`.
     /// * `axis` - Axis representing the frequency dependence of `function`.
     ///
     /// # Returns
@@ -754,7 +754,7 @@ impl HankelTransform {
         } else {
             Err(HankelError::Interpolation(
                 "Attempted to interpolate onto original_k_grid on HankelTransform \
-                    object that was not constructed with a k grid"
+                    object that was not constructed with a k_grid"
                     .to_string(),
             ))
         }

@@ -23,7 +23,7 @@ I have used this code extensively (originally in Python) for beam-propagation-me
 It provides both a simple single-shot interface (`one_shot` module), and a more advanced approach (via the `HankelTransform` struct) that speeds up computation significantly if making multiple transforms on the same grid.
 
 Contributions and comments are welcome using Github at:
-http://github.com/etfrogers/hankrs
+https://github.com/etfrogers/hankrs
 
 Installation
 ------------
@@ -47,7 +47,7 @@ Bugs & Contribution
 -------------------
 
 Please use Github to report bugs, feature requests and submit your code:
-http://github.com/etfrogers/hankrs
+https://github.com/etfrogers/hankrs
 
 Documentation
 -------------
