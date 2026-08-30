@@ -183,7 +183,7 @@ impl HankelScalar for Complex<f64> {
 /// > J. Opt. Soc. Am. A **21** (1) 53-58 (2004)
 ///
 /// The algorithm also uses root finding to calculate the roots of the bessel function.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct HankelTransform {
     /// Transform order `p`
     order: i32,
@@ -930,7 +930,7 @@ where
 }
 
 /// An error that occurs during Hankel transform operations.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum HankelError {
     /// Indicates that a supplied grid was empty.
     #[error("Grid must contain at least one point")]
