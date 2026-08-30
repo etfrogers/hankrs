@@ -77,3 +77,83 @@ where
     let ht = transformer.iqdht(&f_transform, axis);
     Ok((transformer.into_radius(), ht))
 }
+
+/// Perform a spherical quasi-discrete Hankel transform of the function `f` (sampled at points
+/// `r`) and return the transformed function and its sample points in `k`-space.
+///
+/// # Warning
+/// This method is a convenience wrapper for [`HankelTransform::qdht`], but incurs a
+/// significant overhead in calculating the [`HankelTransform`] object. If you
+/// are performing multiple transforms on the same grid, it will be much quicker to
+/// construct a single [`HankelTransform`] object using [`HankelTransform::new_spherical`] or
+/// [`HankelTransform::new_spherical_from_r_grid`] and call
+/// [`HankelTransform::qdht`] multiple times.
+///
+/// # Arguments
+/// * `r` - The radial coordinates at which the function is sampled.
+/// * `f` - The value of the function to be transformed.
+/// * `order` - The order of the spherical Hankel Transform to perform.
+/// * `axis` - Axis over which to compute the Hankel transform.
+///
+/// # Returns
+/// A tuple containing the `k` coordinates of the transformed function and its values.
+///
+/// # See Also
+/// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
+/// gives details of and demonstrates verified transform pairs for the spherical QDHT.
+pub fn qdht_spherical<T: HankelScalar, D, S>(
+    r: Array1<f64>,
+    f: &ArrayBase<S, D>,
+    order: i32,
+    axis: Axis,
+) -> Result<(Array1<f64>, Array<T, D>), HankelError>
+where
+    D: Dimension + RemoveAxis,
+    Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    S: Data<Elem = T>,
+{
+    let transformer = HankelTransform::new_spherical_from_r_grid(order, r)?;
+    let f_transform = transformer.to_transform_r_nd(f, axis)?;
+    let ht = transformer.qdht(&f_transform, axis);
+    Ok((transformer.into_kr(), ht))
+}
+
+/// Perform an inverse spherical quasi-discrete Hankel transform of the function `f` (sampled at points
+/// `k`) and return the transformed function and its sample points in radial space.
+///
+/// # Warning
+/// This method is a convenience wrapper for [`HankelTransform::iqdht`], but incurs a
+/// significant overhead in calculating the [`HankelTransform`] object. If you
+/// are performing multiple transforms on the same grid, it will be much quicker to
+/// construct a single [`HankelTransform`] object using [`HankelTransform::new_spherical`] or
+/// [`HankelTransform::new_spherical_from_k_grid`] and call
+/// [`HankelTransform::iqdht`] multiple times.
+///
+/// # Arguments
+/// * `k` - The `k` coordinates at which the function is sampled.
+/// * `f` - The value of the function to be transformed.
+/// * `order` - The order of the spherical Hankel Transform to perform.
+/// * `axis` - Axis over which to compute the Hankel transform.
+///
+/// # Returns
+/// A tuple containing the radial coordinates of the transformed function and its values.
+///
+/// # See Also
+/// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
+/// gives details of and demonstrates verified transform pairs for the spherical QDHT.
+pub fn iqdht_spherical<T: HankelScalar, D, S>(
+    k: Array1<f64>,
+    f: &ArrayBase<S, D>,
+    order: i32,
+    axis: Axis,
+) -> Result<(Array1<f64>, Array<T, D>), HankelError>
+where
+    D: Dimension + RemoveAxis,
+    Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
+    S: Data<Elem = T>,
+{
+    let transformer = HankelTransform::new_spherical_from_k_grid(order, k)?;
+    let f_transform = transformer.to_transform_k_nd(f, axis)?;
+    let ht = transformer.iqdht(&f_transform, axis);
+    Ok((transformer.into_radius(), ht))
+}

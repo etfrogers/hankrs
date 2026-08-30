@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 use amos_bessel_rs::bessel_k;
 use hankrs::{
     HankelTransform,
-    one_shot::{iqdht, qdht},
+    one_shot::{iqdht, iqdht_spherical, qdht, qdht_spherical},
 };
 use ndarray::{Array1, Array2, Axis, CowArray, Dim, s};
 use ndarray_stats::DeviationExt;
@@ -218,4 +218,26 @@ fn test_1_over_r2_plus_z2_equivalence(#[values(2.0, 1.0, 0.1)] a: f64) {
     assert_arrays_equal(&kr, transformer.kr(), 1e-8, 1e-5);
     let standard_ht = transformer.qdht(&f_transformer, Axis(0));
     assert_arrays_equal(&one_shot_ht, &standard_ht, 1e-2, 1e-3);
+}
+
+#[rstest]
+fn test_spherical_gaussian_oneshot(#[values(0.5, 1.0, 2.0)] a: f64) {
+    let r = Array1::<f64>::linspace(0.0, 20.0, 250);
+    let function = r.mapv(|rad| (-a * rad.powi(2)).exp());
+    let (kr, actual_ht) = qdht_spherical(r.clone(), &function, 0, Axis(0)).unwrap();
+
+    let expected_ht = kr.mapv(|k| {
+        let prefactor = PI.sqrt() / (4.0 * a.powf(1.5));
+        prefactor * (-(k.powi(2)) / (4.0 * a)).exp()
+    });
+
+    // for (act, exp) in actual_ht.iter().zip(expected_ht.iter()) {
+    assert_arrays_equal(&actual_ht, &expected_ht, 0.001, 0.1);
+    // }
+
+    let (retrieved_r, actual_f) = iqdht_spherical(kr, &actual_ht, 0, Axis(0)).unwrap();
+    let expected_f = retrieved_r.mapv(|rad| (-a * rad.powi(2)).exp());
+    // for (act, exp) in actual_f.iter().zip(expected_f.iter()) {
+    assert_arrays_equal(&actual_f, &expected_f, 0.001, 0.1);
+    // }
 }
