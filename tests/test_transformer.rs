@@ -7,8 +7,8 @@ use hankrs::HankelTransform;
 use ndarray::ArrayView1;
 use ndarray::{Array, Array1, ArrayView, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
-use num::pow::Pow;
 use num_complex::Complex64;
+use num_traits::pow::Pow;
 use rand::random;
 use rstest::{fixture, rstest};
 use rstest_reuse::{apply, template};
@@ -350,11 +350,10 @@ fn test_gaussian_complex(
     // both scaling of the argument (so use kr rather than v) and
     // scaling of the magnitude.
 
-    use num::Complex;
     let a2 = a.powi(2);
     let f = transformer_zero_order
         .radius()
-        .mapv(|r| Complex::new((-a2 * r.powi(2)).exp(), 0.0));
+        .mapv(|r| Complex64::new((-a2 * r.powi(2)).exp(), 0.0));
     let expected_ht = transformer_zero_order
         .kr()
         .mapv(|k| 2.0 * PI * (1.0 / (2.0 * a2)) * (-(k.powi(2) / (4.0 * a2))).exp());

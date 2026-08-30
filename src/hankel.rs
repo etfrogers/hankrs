@@ -16,8 +16,8 @@ use thiserror::Error;
 use amos_bessel_rs::bessel_j;
 use bessel_zeros::{BesselFunType, fast::bessel_zeros};
 use ndarray::ArrayView1;
-use num::Zero;
 use num_complex::Complex;
+use num_traits::Zero;
 use real_bessel::jn as bessel_j_real;
 
 /// A trait for scalar types that can be processed by the Hankel transform.
