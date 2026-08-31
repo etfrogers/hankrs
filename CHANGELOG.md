@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-31
+
+### Added
+- Added public `TransformType` enum (`Polar`, `Spherical`) representing the coordinate symmetry of the transform.
+- Added `HankelTransform::transform_type(&self) -> TransformType` getter method for runtime transform type introspection.
+- `TransformType` derives `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, and `Hash`.
+- `HankelTransform`'s `Debug` format now includes the `transform_type` field.
+
 ## [1.0.0] - 2026-08-30
 
 ### Added

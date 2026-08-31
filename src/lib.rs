@@ -39,7 +39,7 @@ mod hankel;
 pub mod one_shot;
 
 /// The primary struct used for computing Hankel transforms.
-pub use hankel::{HankelError, HankelScalar, HankelTransform};
+pub use hankel::{HankelError, HankelScalar, HankelTransform, TransformType};
 
 #[cfg(test)]
 pub(crate) use hankel::{spherical_jn, spherical_jn_zeros};
