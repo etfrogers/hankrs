@@ -10,7 +10,10 @@ use rayon::prelude::*;
 use roots::{SimpleConvergency, find_root_brent};
 use std::f64::consts::FRAC_PI_2;
 
-use std::{f64::consts::PI, fmt::Debug};
+use std::{
+    f64::consts::PI,
+    fmt::{self, Debug, Display},
+};
 use thiserror::Error;
 
 use amos_bessel_rs::bessel_j;
@@ -211,12 +214,15 @@ pub struct HankelTransform {
     jv: Array1<f64>,
     /// Radius transform vector `J_R = J_{p+1}(\alpha) / r_max`
     jr: Array1<f64>,
+    /// Transform type (polar or spherical) that the object will perform
+    transform_type: TransformType,
 }
 
 impl Debug for HankelTransform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HankelTransform")
             .field("order", &self.order)
+            .field("transform_type", &self.transform_type)
             .field("n_points", &self.n_points)
             .field("max_radius", &self.max_radius)
             .finish()
@@ -247,6 +253,7 @@ impl RelativeEq for HankelTransform {
         max_relative: Self::Epsilon,
     ) -> bool {
         self.order == other.order
+            && self.transform_type == other.transform_type
             && self.n_points == other.n_points
             && self
                 .max_radius
@@ -496,6 +503,7 @@ impl HankelTransform {
             t,
             jr,
             jv,
+            transform_type,
         })
     }
 
@@ -517,6 +525,11 @@ impl HankelTransform {
     /// Returns the maximum frequency `v_max` of the transform.
     pub fn max_frequency(&self) -> f64 {
         self.max_v
+    }
+
+    /// Returns the transform type (polar or spherical) that the object will perform.
+    pub fn transform_type(&self) -> TransformType {
+        self.transform_type
     }
 
     /// Returns the number of sample points `N`.
@@ -965,12 +978,29 @@ pub enum HankelError {
     InvalidOrder,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-enum TransformType {
+/// Indicates the type of Hankel transform that a [`HankelTransform`] object will perform.
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
+pub enum TransformType {
     /// Indicates a polar Hankel transform.
     Polar,
     /// Indicates a spherical Hankel transform.
     Spherical,
+}
+
+impl TransformType {
+    /// Returns the string slice representation of the transform type (`"polar"` or `"spherical"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TransformType::Polar => "polar",
+            TransformType::Spherical => "spherical",
+        }
+    }
+}
+
+impl Display for TransformType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 // adapted from SciPy Cookbook https://scipy-cookbook.readthedocs.io/items/SphericalBesselZeros.html

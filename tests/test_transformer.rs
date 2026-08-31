@@ -2,7 +2,7 @@ mod utils;
 
 use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
-use hankrs::HankelTransform;
+use hankrs::{HankelTransform, TransformType};
 #[cfg(test)]
 use ndarray::ArrayView1;
 use ndarray::{Array, Array1, ArrayView, Axis, Dim, Dimension, Ix1};
@@ -98,10 +98,67 @@ fn test_getters(transformer_zero_order: &HankelTransform) {
 }
 
 #[rstest]
+fn test_transform_types_on_constructors() {
+    let r = ndarray::Array1::linspace(0.1, 10.0, 64);
+    let k = ndarray::Array1::linspace(0.1, 10.0, 64);
+
+    assert_eq!(
+        HankelTransform::new(0, 10.0, 64).unwrap().transform_type(),
+        TransformType::Polar
+    );
+    assert_eq!(
+        HankelTransform::new_from_r_grid(0, r.clone())
+            .unwrap()
+            .transform_type(),
+        TransformType::Polar
+    );
+    assert_eq!(
+        HankelTransform::new_from_k_grid(0, k.clone())
+            .unwrap()
+            .transform_type(),
+        TransformType::Polar
+    );
+
+    assert_eq!(
+        HankelTransform::new_spherical(0, 10.0, 64)
+            .unwrap()
+            .transform_type(),
+        TransformType::Spherical
+    );
+    assert_eq!(
+        HankelTransform::new_spherical_from_r_grid(0, r)
+            .unwrap()
+            .transform_type(),
+        TransformType::Spherical
+    );
+    assert_eq!(
+        HankelTransform::new_spherical_from_k_grid(0, k)
+            .unwrap()
+            .transform_type(),
+        TransformType::Spherical
+    );
+}
+
+#[rstest]
+fn test_transform_type_display_and_to_string() {
+    assert_eq!(TransformType::Polar.as_str(), "polar");
+    assert_eq!(TransformType::Polar.to_string(), "polar");
+    assert_eq!(format!("{}", TransformType::Polar), "polar");
+    assert_eq!(format!("{:?}", TransformType::Polar), "Polar");
+
+    assert_eq!(TransformType::Spherical.as_str(), "spherical");
+    assert_eq!(TransformType::Spherical.to_string(), "spherical");
+    assert_eq!(format!("{}", TransformType::Spherical), "spherical");
+    assert_eq!(format!("{:?}", TransformType::Spherical), "Spherical");
+}
+
+#[rstest]
 fn test_errors(radius: Array1<f64>) {
     let fun = random_array_like(radius.view());
 
     let transformer = HankelTransform::new(0, 3.0, 256).unwrap();
+    assert_eq!(transformer.transform_type(), TransformType::Polar);
+
     assert!(transformer.to_original_r(&fun).is_err());
     assert!(transformer.to_original_k(&fun).is_err());
     assert!(transformer.to_original_r_nd(&fun, Axis(0)).is_err());
@@ -747,6 +804,7 @@ fn test_spherical() {
     let analytical_laplacian = r.mapv(|r| (-(r * r) / 2.0).exp() * (r * r - 3.0));
 
     let transformer = HankelTransform::new_spherical_from_r_grid(0, r).unwrap();
+    assert_eq!(transformer.transform_type(), TransformType::Spherical);
     let resampled_r = transformer.to_transform_r(&function).unwrap();
     let laplacian = transformer.qdht(&resampled_r, Axis(0));
     let laplacian = -laplacian * transformer.kr().mapv(|kr| kr * kr);
