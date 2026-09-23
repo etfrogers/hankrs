@@ -41,9 +41,17 @@ pub trait HankelScalar: Clone + Zero + Send + Sync + std::ops::MulAssign<f64> {
     fn dot_real_matrix(matrix: ArrayView2<f64>, vector: ArrayView1<Self>) -> Array1<Self>;
 
     /// Divides a vector of this scalar type by a purely real vector.
+    #[deprecated(
+        since = "1.2.0",
+        note = "No longer used internally; transforms use pre-scaled matrices"
+    )]
     fn div_real_array(vector: ArrayView1<Self>, scale: ArrayView1<f64>) -> Array1<Self>;
 
     /// Multiplies a mutable vector of this scalar type in-place by a purely real vector.
+    #[deprecated(
+        since = "1.2.0",
+        note = "No longer used internally; transforms use pre-scaled matrices"
+    )]
     fn mul_real_array_assign(vector: &mut Array1<Self>, scale: ArrayView1<f64>);
 
     /// Interpolates the array along the specified axis using a cubic spline.
