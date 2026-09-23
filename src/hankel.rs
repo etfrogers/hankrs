@@ -69,11 +69,7 @@ pub trait HankelScalar: Clone + Zero + Send + Sync + std::ops::MulAssign<f64> {
     ///
     /// # Panics
     /// Panics if `axis` is out of bounds for a 2D array (i.e. neither `Axis(0)` nor `Axis(1)`).
-    fn transform_2d(
-        matrix: ArrayView2<f64>,
-        input: ArrayView2<Self>,
-        axis: Axis,
-    ) -> Array2<Self>;
+    fn transform_2d(matrix: ArrayView2<f64>, input: ArrayView2<Self>, axis: Axis) -> Array2<Self>;
 }
 
 /// Implementation of [`HankelScalar`] for real, 64-bit floating point numbers (`f64`).
@@ -100,11 +96,7 @@ impl HankelScalar for f64 {
     {
         spline_f64(x0, y0, x, axis)
     }
-    fn transform_2d(
-        matrix: ArrayView2<f64>,
-        input: ArrayView2<f64>,
-        axis: Axis,
-    ) -> Array2<f64> {
+    fn transform_2d(matrix: ArrayView2<f64>, input: ArrayView2<f64>, axis: Axis) -> Array2<f64> {
         match axis {
             Axis(0) => matrix.dot(&input),
             Axis(1) => input.dot(&matrix.t()),
@@ -165,22 +157,13 @@ impl HankelScalar for Complex<f64> {
         // Computing two real GEMMs avoids the 4x matrix multiplications of a generic complex
         // GEMM (zgemm), halving the arithmetic operations.
         // We unpack real and imaginary parts concurrently using rayon::join:
-        let (re_in, im_in) = rayon::join(
-            || input.mapv(|c| c.re),
-            || input.mapv(|c| c.im),
-        );
+        let (re_in, im_in) = rayon::join(|| input.mapv(|c| c.re), || input.mapv(|c| c.im));
         // Execute the real and imaginary dense GEMMs concurrently on separate threads:
         let (re_out, im_out) = match axis {
-            Axis(0) => rayon::join(
-                || matrix.dot(&re_in),
-                || matrix.dot(&im_in),
-            ),
+            Axis(0) => rayon::join(|| matrix.dot(&re_in), || matrix.dot(&im_in)),
             Axis(1) => {
                 let matrix_t = matrix.t();
-                rayon::join(
-                    || re_in.dot(&matrix_t),
-                    || im_in.dot(&matrix_t),
-                )
+                rayon::join(|| re_in.dot(&matrix_t), || im_in.dot(&matrix_t))
             }
             _ => panic!("Axis {axis:?} is out of bounds for 2D transform"),
         };
@@ -328,7 +311,9 @@ impl RelativeEq for HankelTransform {
             && self.kr.relative_eq(&other.kr, epsilon, max_relative)
             && self.v.relative_eq(&other.v, epsilon, max_relative)
             && self.t.relative_eq(&other.t, epsilon, max_relative)
-            && self.m_qdht.relative_eq(&other.m_qdht, epsilon, max_relative)
+            && self
+                .m_qdht
+                .relative_eq(&other.m_qdht, epsilon, max_relative)
             && self
                 .iqdht_scale
                 .relative_eq(&other.iqdht_scale, epsilon, max_relative)
