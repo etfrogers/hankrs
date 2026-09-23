@@ -2,7 +2,7 @@ use approx::{AbsDiffEq, RelativeEq};
 use ndarray::Zip;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayView, ArrayView2, Axis, Data, Dim, DimAdd, Dimension,
-    Ix1, IxDyn, RemoveAxis, s,
+    Ix1, Ix2, IxDyn, RemoveAxis, s,
 };
 use ndarray_interp::interp1d::{Interp1DBuilder, cubic_spline::CubicSpline};
 use ndarray_stats::QuantileExt;
@@ -56,6 +56,15 @@ pub trait HankelScalar: Clone + Zero + Send + Sync {
     where
         D: Dimension + RemoveAxis,
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>;
+
+    /// Performs a 2D transform along the specified axis (0 or 1) using dense matrix multiplication.
+    fn transform_2d(
+        matrix: ArrayView2<f64>,
+        input: ArrayView2<Self>,
+        axis: Axis,
+        scale_in: ArrayView1<f64>,
+        scale_out: ArrayView1<f64>,
+    ) -> Array2<Self>;
 }
 
 /// Implementation of [`HankelScalar`] for real, 64-bit floating point numbers (`f64`).
@@ -81,6 +90,30 @@ impl HankelScalar for f64 {
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
     {
         spline_f64(x0, y0, x, axis)
+    }
+    fn transform_2d(
+        matrix: ArrayView2<f64>,
+        input: ArrayView2<f64>,
+        axis: Axis,
+        scale_in: ArrayView1<f64>,
+        scale_out: ArrayView1<f64>,
+    ) -> Array2<f64> {
+        let mut scaled = input.to_owned();
+        Zip::from(scaled.axis_iter_mut(axis))
+            .and(scale_in)
+            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v / s));
+
+        let mut out = if axis == Axis(0) {
+            matrix.dot(&scaled)
+        } else {
+            scaled.dot(&matrix)
+        };
+
+        Zip::from(out.axis_iter_mut(axis))
+            .and(scale_out)
+            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v * s));
+
+        out
     }
 }
 
@@ -126,6 +159,38 @@ impl HankelScalar for Complex<f64> {
         ndarray::Zip::from(&real_part)
             .and(&imag_part)
             .map_collect(|&r, &i| Complex::new(r, i))
+    }
+    fn transform_2d(
+        matrix: ArrayView2<f64>,
+        input: ArrayView2<Complex<f64>>,
+        axis: Axis,
+        scale_in: ArrayView1<f64>,
+        scale_out: ArrayView1<f64>,
+    ) -> Array2<Complex<f64>> {
+        let mut re_in = input.mapv(|c| c.re);
+        let mut im_in = input.mapv(|c| c.im);
+        Zip::from(re_in.axis_iter_mut(axis))
+            .and(scale_in)
+            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v / s));
+        Zip::from(im_in.axis_iter_mut(axis))
+            .and(scale_in)
+            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v / s));
+
+        let (re_out, im_out) = if axis == Axis(0) {
+            (matrix.dot(&re_in), matrix.dot(&im_in))
+        } else {
+            (re_in.dot(&matrix), im_in.dot(&matrix))
+        };
+
+        let mut out = Zip::from(&re_out)
+            .and(&im_out)
+            .map_collect(|&re, &im| Complex::new(re, im));
+
+        Zip::from(out.axis_iter_mut(axis))
+            .and(scale_out)
+            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v * s));
+
+        out
     }
 }
 
@@ -809,7 +874,7 @@ impl HankelTransform {
     {
         let scale_factor_input = self.jr.view();
         let scale_factor_output = self.jv.view();
-        self.transform_by_lines(fr, axis, scale_factor_input, scale_factor_output)
+        self.transform_array(fr, axis, scale_factor_input, scale_factor_output)
     }
 
     /// IQDHT: Inverse Quasi Discrete Hankel Transform
@@ -839,10 +904,10 @@ impl HankelTransform {
     where
         S: Data<Elem = T>,
     {
-        self.transform_by_lines(fv, axis, self.jv.view(), self.jr.view())
+        self.transform_array(fv, axis, self.jv.view(), self.jr.view())
     }
 
-    fn transform_by_lines<T: HankelScalar, D: Dimension, S>(
+    fn transform_array<T: HankelScalar, D: Dimension, S>(
         &self,
         f: &ArrayBase<S, D>,
         axis: Axis,
@@ -861,6 +926,44 @@ impl HankelTransform {
             self.n_points
         );
 
+        // 1D fast path: sequential execution without Rayon overhead
+        if f.ndim() == 1 {
+            if let Ok(f1d) = f.view().into_dimensionality::<Ix1>() {
+                let scaled_line = T::div_real_array(f1d, scale_factor_input);
+                let mut transformed = T::dot_real_matrix(self.t.view(), scaled_line.view());
+                T::mul_real_array_assign(&mut transformed, scale_factor_output);
+                return transformed.into_dimensionality::<D>().unwrap();
+            }
+        }
+
+        // 2D fast path: dense matrix-matrix multiplication (GEMM)
+        if f.ndim() == 2 {
+            if let Ok(f2d) = f.view().into_dimensionality::<Ix2>() {
+                let transformed = T::transform_2d(
+                    self.t.view(),
+                    f2d,
+                    axis,
+                    scale_factor_input,
+                    scale_factor_output,
+                );
+                return transformed.into_dimensionality::<D>().unwrap();
+            }
+        }
+
+        // Fallback for 3D/N-D: Rayon lane iteration
+        self.transform_by_lines(f, axis, scale_factor_input, scale_factor_output)
+    }
+
+    fn transform_by_lines<T: HankelScalar, D: Dimension, S>(
+        &self,
+        f: &ArrayBase<S, D>,
+        axis: Axis,
+        scale_factor_input: ArrayView1<f64>,
+        scale_factor_output: ArrayView1<f64>,
+    ) -> Array<T, D>
+    where
+        S: Data<Elem = T>,
+    {
         let mut transform = Array::zeros(f.dim());
 
         // 1. Swap into_iter() for into_par_iter() on both lanes
