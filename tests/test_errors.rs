@@ -71,3 +71,30 @@ fn test_panic_iqdht_dimension_mismatch() {
     let wrong_size_data = array![1.0, 2.0, 3.0]; // len 3 != 256
     transformer.iqdht(&wrong_size_data, ndarray::Axis(0));
 }
+
+#[test]
+#[should_panic(expected = "is out of bounds for 2D transform")]
+fn test_panic_transform_2d_f64_invalid_axis() {
+    use hankrs::HankelScalar;
+    let matrix = ndarray::Array2::<f64>::zeros((4, 4));
+    let input = ndarray::Array2::<f64>::zeros((4, 4));
+    f64::transform_2d(matrix.view(), input.view(), ndarray::Axis(2));
+}
+
+#[test]
+#[should_panic(expected = "is out of bounds for 2D transform")]
+fn test_panic_transform_2d_complex_invalid_axis() {
+    use hankrs::HankelScalar;
+    use num_complex::Complex64;
+    let matrix = ndarray::Array2::<f64>::zeros((4, 4));
+    let input = ndarray::Array2::<Complex64>::zeros((4, 4));
+    Complex64::transform_2d(matrix.view(), input.view(), ndarray::Axis(2));
+}
+
+#[test]
+#[should_panic]
+fn test_panic_qdht_axis_out_of_bounds() {
+    let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
+    let data = ndarray::Array2::<f64>::zeros((256, 10));
+    transformer.qdht(&data, ndarray::Axis(2));
+}

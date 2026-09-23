@@ -66,6 +66,9 @@ pub trait HankelScalar: Clone + Zero + Send + Sync + std::ops::MulAssign<f64> {
         Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>;
 
     /// Performs a 2D transform along the specified axis (0 or 1) using dense matrix multiplication.
+    ///
+    /// # Panics
+    /// Panics if `axis` is out of bounds for a 2D array (i.e. neither `Axis(0)` nor `Axis(1)`).
     fn transform_2d(
         matrix: ArrayView2<f64>,
         input: ArrayView2<Self>,
@@ -877,7 +880,8 @@ impl HankelTransform {
     /// Function in frequency space (sampled at `self.v`).
     ///
     /// # Panics
-    /// Panics if the length of `fr` along `axis` does not match [`HankelTransform::n_points`].
+    /// Panics if `axis` is out of bounds for `fr`, or if the length of `fr` along `axis`
+    /// does not match [`HankelTransform::n_points`].
     pub fn qdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fr: &ArrayBase<S, D>,
@@ -911,7 +915,8 @@ impl HankelTransform {
     /// Radial function (sampled at `self.r`) = IHT(fv).
     ///
     /// # Panics
-    /// Panics if the length of `fv` along `axis` does not match [`HankelTransform::n_points`].
+    /// Panics if `axis` is out of bounds for `fv`, or if the length of `fv` along `axis`
+    /// does not match [`HankelTransform::n_points`].
     pub fn iqdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fv: &ArrayBase<S, D>,
