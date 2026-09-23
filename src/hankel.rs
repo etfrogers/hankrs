@@ -36,7 +36,7 @@ use real_bessel::jn as bessel_j_real;
 /// # Implementations
 /// This trait is already implemented for `f64` and `num_complex::Complex<f64>`. You generally
 /// will not need to implement this yourself unless you are passing custom scalar types into the transform.
-pub trait HankelScalar: Clone + Zero + Send + Sync {
+pub trait HankelScalar: Clone + Zero + Send + Sync + std::ops::MulAssign<f64> {
     /// Multiplies a purely real transform matrix with a vector of this scalar type.
     fn dot_real_matrix(matrix: ArrayView2<f64>, vector: ArrayView1<Self>) -> Array1<Self>;
 
@@ -62,8 +62,6 @@ pub trait HankelScalar: Clone + Zero + Send + Sync {
         matrix: ArrayView2<f64>,
         input: ArrayView2<Self>,
         axis: Axis,
-        scale_in: ArrayView1<f64>,
-        scale_out: ArrayView1<f64>,
     ) -> Array2<Self>;
 }
 
@@ -95,25 +93,12 @@ impl HankelScalar for f64 {
         matrix: ArrayView2<f64>,
         input: ArrayView2<f64>,
         axis: Axis,
-        scale_in: ArrayView1<f64>,
-        scale_out: ArrayView1<f64>,
     ) -> Array2<f64> {
-        let mut scaled = input.to_owned();
-        Zip::from(scaled.axis_iter_mut(axis))
-            .and(scale_in)
-            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v / s));
-
-        let mut out = if axis == Axis(0) {
-            matrix.dot(&scaled)
-        } else {
-            scaled.dot(&matrix)
-        };
-
-        Zip::from(out.axis_iter_mut(axis))
-            .and(scale_out)
-            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v * s));
-
-        out
+        match axis {
+            Axis(0) => matrix.dot(&input),
+            Axis(1) => input.dot(&matrix.t()),
+            _ => panic!("Axis {axis:?} is out of bounds for 2D transform"),
+        }
     }
 }
 
@@ -164,33 +149,34 @@ impl HankelScalar for Complex<f64> {
         matrix: ArrayView2<f64>,
         input: ArrayView2<Complex<f64>>,
         axis: Axis,
-        scale_in: ArrayView1<f64>,
-        scale_out: ArrayView1<f64>,
     ) -> Array2<Complex<f64>> {
-        let mut re_in = input.mapv(|c| c.re);
-        let mut im_in = input.mapv(|c| c.im);
-        Zip::from(re_in.axis_iter_mut(axis))
-            .and(scale_in)
-            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v / s));
-        Zip::from(im_in.axis_iter_mut(axis))
-            .and(scale_in)
-            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v / s));
-
-        let (re_out, im_out) = if axis == Axis(0) {
-            (matrix.dot(&re_in), matrix.dot(&im_in))
-        } else {
-            (re_in.dot(&matrix), im_in.dot(&matrix))
+        // Because the transform matrix M is purely real, M * (R + i*I) = (M * R) + i * (M * I).
+        // Computing two real GEMMs avoids the 4x matrix multiplications of a generic complex
+        // GEMM (zgemm), halving the arithmetic operations.
+        // We unpack real and imaginary parts concurrently using rayon::join:
+        let (re_in, im_in) = rayon::join(
+            || input.mapv(|c| c.re),
+            || input.mapv(|c| c.im),
+        );
+        // Execute the real and imaginary dense GEMMs concurrently on separate threads:
+        let (re_out, im_out) = match axis {
+            Axis(0) => rayon::join(
+                || matrix.dot(&re_in),
+                || matrix.dot(&im_in),
+            ),
+            Axis(1) => {
+                let matrix_t = matrix.t();
+                rayon::join(
+                    || re_in.dot(&matrix_t),
+                    || im_in.dot(&matrix_t),
+                )
+            }
+            _ => panic!("Axis {axis:?} is out of bounds for 2D transform"),
         };
-
-        let mut out = Zip::from(&re_out)
+        // Recombine the transformed real and imaginary components into complex numbers:
+        ndarray::Zip::from(&re_out)
             .and(&im_out)
-            .map_collect(|&re, &im| Complex::new(re, im));
-
-        Zip::from(out.axis_iter_mut(axis))
-            .and(scale_out)
-            .for_each(|mut slice, &s| slice.mapv_inplace(|v| v * s));
-
-        out
+            .map_collect(|&re, &im| Complex::new(re, im))
     }
 }
 
@@ -275,6 +261,10 @@ pub struct HankelTransform {
     v: Array1<f64>,
     /// Transform matrix
     t: Array2<f64>,
+    /// Pre-scaled QDHT transform matrix: `M_qdht[i, j] = T[i, j] * (J_V[i] / J_R[j])`
+    m_qdht: Array2<f64>,
+    /// Scalar factor relating IQDHT to QDHT: `(J_R[k] / J_V[k])^2`
+    iqdht_scale: f64,
     /// Frequency transform vector `J_V = J_{p+1}(\alpha) / v_{max}`
     jv: Array1<f64>,
     /// Radius transform vector `J_R = J_{p+1}(\alpha) / r_max`
@@ -327,6 +317,10 @@ impl RelativeEq for HankelTransform {
             && self.kr.relative_eq(&other.kr, epsilon, max_relative)
             && self.v.relative_eq(&other.v, epsilon, max_relative)
             && self.t.relative_eq(&other.t, epsilon, max_relative)
+            && self.m_qdht.relative_eq(&other.m_qdht, epsilon, max_relative)
+            && self
+                .iqdht_scale
+                .relative_eq(&other.iqdht_scale, epsilon, max_relative)
             && self.jr.relative_eq(&other.jr, epsilon, max_relative)
             && self.jv.relative_eq(&other.jv, epsilon, max_relative)
     }
@@ -554,6 +548,15 @@ impl HankelTransform {
             }
         }
 
+        let iqdht_scale = (jr[0] / jv[0]).powi(2);
+
+        let mut m_qdht = Array2::<f64>::zeros((n_points, n_points));
+        Zip::indexed(&mut m_qdht)
+            .and(&t)
+            .par_for_each(|(i, j), mq, &t_val| {
+                *mq = t_val * (jv[i] / jr[j]);
+            });
+
         Ok(Self {
             order,
             n_points,
@@ -566,6 +569,8 @@ impl HankelTransform {
             kr,
             v,
             t,
+            m_qdht,
+            iqdht_scale,
             jr,
             jv,
             transform_type,
@@ -846,10 +851,11 @@ impl HankelTransform {
     /// Mathematically, it computes `F(v) = H{ f(r) }`.
     /// In terms of the discrete matrix operations, it evaluates:
     ///
-    /// `F = J_V * ( T * (f / J_R) )`
+    /// `F = J_V * ( T * (f / J_R) ) = M_qdht * f`
     ///
-    /// where `T` is the symmetric transform matrix, `J_V` and `J_R` are the scale factors.
-    /// The division by `J_R` and multiplication by `J_V` are element-wise operations.
+    /// where `T` is the symmetric transform matrix and `M_qdht[i, j] = T[i, j] * (J_V[i] / J_R[j])`
+    /// is precomputed at initialization to allow direct dense matrix multiplication without
+    /// separate vector scaling sweeps.
     ///
     /// # Warning
     /// The input function must be sampled at the points `self.r`, and the output
@@ -864,7 +870,7 @@ impl HankelTransform {
     ///
     /// # Panics
     /// Panics if the length of `fr` along `axis` does not match [`HankelTransform::n_points`].
-    pub fn qdht<T: HankelScalar, D: Dimension + RemoveAxis, S>(
+    pub fn qdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fr: &ArrayBase<S, D>,
         axis: Axis,
@@ -872,9 +878,7 @@ impl HankelTransform {
     where
         S: Data<Elem = T>,
     {
-        let scale_factor_input = self.jr.view();
-        let scale_factor_output = self.jv.view();
-        self.transform_array(fr, axis, scale_factor_input, scale_factor_output)
+        self.transform_array(fr, axis, self.m_qdht.view())
     }
 
     /// IQDHT: Inverse Quasi Discrete Hankel Transform
@@ -883,9 +887,13 @@ impl HankelTransform {
     /// a function of radius.
     ///
     /// Mathematically, it computes `f(r) = H^{-1}{ F(v) }`.
-    /// Because the QDHT transform matrix `T` is symmetric and its own inverse, the discrete matrix operation is identical to the forward transform, but with the role of the scale factors `J_R` and `J_V` reversed:
+    /// Because the QDHT transform matrix `T` is symmetric and its own inverse, the discrete
+    /// matrix operation evaluates:
     ///
-    /// `f = J_R * ( T * (F / J_V) )`
+    /// `f = J_R * ( T * (F / J_V) ) = (v_max / r_max)^2 * (M_qdht * F)`
+    ///
+    /// Using the scalar conversion factor `iqdht_scale = (v_max / r_max)^2`, this is evaluated
+    /// via the pre-scaled `M_qdht` matrix followed by a scalar multiplication.
     ///
     /// # Arguments
     /// * `fv` - Function in frequency space (sampled at `self.v`).
@@ -904,15 +912,19 @@ impl HankelTransform {
     where
         S: Data<Elem = T>,
     {
-        self.transform_array(fv, axis, self.jv.view(), self.jr.view())
+        let mut out = self.transform_array(fv, axis, self.m_qdht.view());
+        out.mapv_inplace(|mut x| {
+            x *= self.iqdht_scale;
+            x
+        });
+        out
     }
 
     fn transform_array<T: HankelScalar, D: Dimension, S>(
         &self,
         f: &ArrayBase<S, D>,
         axis: Axis,
-        scale_factor_input: ArrayView1<f64>,
-        scale_factor_output: ArrayView1<f64>,
+        matrix: ArrayView2<f64>,
     ) -> Array<T, D>
     where
         S: Data<Elem = T>,
@@ -927,64 +939,62 @@ impl HankelTransform {
         );
 
         // 1D fast path: sequential execution without Rayon overhead
-        if f.ndim() == 1 {
-            if let Ok(f1d) = f.view().into_dimensionality::<Ix1>() {
-                let scaled_line = T::div_real_array(f1d, scale_factor_input);
-                let mut transformed = T::dot_real_matrix(self.t.view(), scaled_line.view());
-                T::mul_real_array_assign(&mut transformed, scale_factor_output);
-                return transformed.into_dimensionality::<D>().unwrap();
-            }
+        if let Ok(f1d) = f.view().into_dimensionality::<Ix1>() {
+            let transformed = T::dot_real_matrix(matrix, f1d);
+            return transformed.into_dimensionality::<D>().unwrap();
         }
 
         // 2D fast path: dense matrix-matrix multiplication (GEMM)
-        if f.ndim() == 2 {
-            if let Ok(f2d) = f.view().into_dimensionality::<Ix2>() {
-                let transformed = T::transform_2d(
-                    self.t.view(),
-                    f2d,
-                    axis,
-                    scale_factor_input,
-                    scale_factor_output,
-                );
-                return transformed.into_dimensionality::<D>().unwrap();
-            }
+        if let Ok(f2d) = f.view().into_dimensionality::<Ix2>() {
+            let transformed = T::transform_2d(matrix, f2d, axis);
+            return transformed.into_dimensionality::<D>().unwrap();
         }
 
         // Fallback for 3D/N-D: Rayon lane iteration
-        self.transform_by_lines(f, axis, scale_factor_input, scale_factor_output)
+        self.transform_by_lines(f, axis, matrix)
     }
 
     fn transform_by_lines<T: HankelScalar, D: Dimension, S>(
         &self,
         f: &ArrayBase<S, D>,
         axis: Axis,
-        scale_factor_input: ArrayView1<f64>,
-        scale_factor_output: ArrayView1<f64>,
+        matrix: ArrayView2<f64>,
     ) -> Array<T, D>
     where
         S: Data<Elem = T>,
     {
         let mut transform = Array::zeros(f.dim());
 
-        // 1. Swap into_iter() for into_par_iter() on both lanes
-        // 2. Swap the for-loop for .for_each()
         transform
             .lanes_mut(axis)
-            .into_iter() // 1. Start as a normal sequential iterator
-            .zip(f.lanes(axis)) // 2. Zip them sequentially
-            .par_bridge() // 3. MAGIC: Hand the sequential pipeline over to Rayon's thread pool
+            .into_iter()
+            .zip(f.lanes(axis))
+            .par_bridge()
             .for_each(|(mut transform_line, fr_line)| {
-                let scaled_line = T::div_real_array(fr_line, scale_factor_input);
-                let mut transformed = T::dot_real_matrix(self.t.view(), scaled_line.view());
-                T::mul_real_array_assign(&mut transformed, scale_factor_output);
+                let transformed = T::dot_real_matrix(matrix, fr_line);
                 transform_line.assign(&transformed);
             });
         transform
     }
 
-    /// Returns a view of the transform matrix.
+    /// Returns a view of the base transform matrix `T`.
     pub fn transform_matrix<'a>(&'a self) -> ArrayView2<'a, f64> {
         self.t.view()
+    }
+
+    /// Returns a view of the pre-scaled QDHT transform matrix.
+    pub fn qdht_matrix<'a>(&'a self) -> ArrayView2<'a, f64> {
+        self.m_qdht.view()
+    }
+
+    /// Returns the pre-scaled IQDHT transform matrix: `M_iqdht = iqdht_scale * M_qdht`.
+    pub fn iqdht_matrix(&self) -> Array2<f64> {
+        &self.m_qdht * self.iqdht_scale
+    }
+
+    /// Returns the scalar conversion factor relating IQDHT to QDHT: `M_iqdht = iqdht_scale * M_qdht`.
+    pub fn iqdht_scale(&self) -> f64 {
+        self.iqdht_scale
     }
 
     /// Returns a view of the radial coordinate vector `r`.

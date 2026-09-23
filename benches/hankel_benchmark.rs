@@ -23,7 +23,7 @@ fn bench_creation(c: &mut Criterion) {
 }
 
 fn bench_transforming(c: &mut Criterion) {
-    let mut group = c.benchmark_group("qdht");
+    let mut group = c.benchmark_group("qdht1d");
 
     for size in [256, 1024].iter() {
         let transformer = HankelTransform::new(0, 10.0, *size).unwrap();
@@ -31,25 +31,9 @@ fn bench_transforming(c: &mut Criterion) {
         let f = r.mapv(|rad| (-rad * rad).exp());
 
         group.bench_with_input(
-            criterion::BenchmarkId::new("by_lines", size),
+            criterion::BenchmarkId::from_parameter(size),
             size,
             |b, &_n| b.iter(|| transformer.qdht(black_box(&f), Axis(0))),
-        );
-
-        let t = transformer.transform_matrix();
-        let scale_in = transformer.radius();
-        let scale_out = transformer.frequency();
-        group.bench_with_input(
-            criterion::BenchmarkId::new("direct_1d", size),
-            size,
-            |b, &_n| {
-                b.iter(|| {
-                    let scaled = &f / &scale_in;
-                    let mut out = t.dot(&scaled);
-                    out *= &scale_out;
-                    out
-                })
-            },
         );
     }
     group.finish();
@@ -69,7 +53,7 @@ fn bench_transforming2d(c: &mut Criterion) {
         group.bench_with_input(
             criterion::BenchmarkId::from_parameter(size),
             size,
-            |b, &_n| b.iter(|| transformer.qdht(&f, Axis(1))),
+            |b, &_n| b.iter(|| transformer.qdht(black_box(&f), Axis(1))),
         );
     }
     group.finish();
@@ -90,7 +74,7 @@ fn bench_transforming3d(c: &mut Criterion) {
         group.bench_with_input(
             criterion::BenchmarkId::from_parameter(size),
             size,
-            |b, &_n| b.iter(|| transformer.qdht(&f, Axis(2))),
+            |b, &_n| b.iter(|| transformer.qdht(black_box(&f), Axis(2))),
         );
     }
     group.finish();
@@ -107,21 +91,8 @@ fn bench_beam_batch(c: &mut Criterion) {
         col.assign(&r.mapv(|rad| Complex::new((-rad * rad).exp(), 0.1)));
     }
 
-    group.bench_function("transform_by_lines", |b| {
+    group.bench_function("iqdht_2d", |b| {
         b.iter(|| transformer.iqdht(black_box(&f), Axis(0)))
-    });
-
-    let t = transformer.transform_matrix();
-    group.bench_function("direct_2d_gemm", |b| {
-        b.iter(|| {
-            let f_re = f.mapv(|c| c.re);
-            let f_im = f.mapv(|c| c.im);
-            let res_re = t.dot(&f_re);
-            let res_im = t.dot(&f_im);
-            ndarray::Zip::from(&res_re)
-                .and(&res_im)
-                .map_collect(|&re, &im| Complex::new(re, im))
-        })
     });
 
     group.finish();
@@ -136,4 +107,3 @@ criterion_group!(
     bench_beam_batch
 );
 criterion_main!(benches);
-
