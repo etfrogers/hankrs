@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-23
+
+### Added
+- Added pre-scaled QDHT matrix $M_{\text{qdht}}[i, j] = T_{ij} \frac{J_V[i]}{J_R[j]}$ computed at initialization, enabling direct dense matrix multiplication without per-transform vector scaling sweeps.
+- Added `HankelTransform::qdht_matrix(&self) -> ArrayView2<'_, f64>` accessor returning a view of the pre-scaled forward QDHT matrix.
+- Added `HankelTransform::iqdht_matrix(&self) -> Array2<f64>` accessor returning the pre-scaled inverse IQDHT matrix.
+- Added `HankelTransform::iqdht_scale(&self) -> f64` accessor returning the scalar factor $(v_{\max} / r_{\max})^2$ relating IQDHT to QDHT.
+- Added `std::ops::MulAssign<f64>` supertrait bound to `HankelScalar`.
+
+### Performance & Optimization
+- **Dense 2D GEMM Fast Path**: Added dedicated matrix-matrix multiplication fast path for 2D arrays along axis 0 and axis 1, eliminating the memory-bandwidth bottleneck of iterating 1D lanes and achieving an **11.5× speedup** over `1.1.0` (and **2.2× faster than NumPy** with BLAS).
+- **1D GEMV Fast Path**: Direct sequential matrix-vector multiplication fast path for 1D arrays without Rayon thread dispatch overhead.
+- **Complex GEMM Decomposition**: For complex arrays (`Complex<f64>`), real and imaginary parts are separated and multiplied concurrently via `rayon::join`. Because the transform matrix is purely real, this requires only two real GEMMs rather than four, halving total floating-point arithmetic compared to generic complex matrix multiplication.
+- **Memory Optimization**: Used scalar conversion factor `iqdht_scale` for IQDHT instead of storing a redundant third matrix, saving 33.5 MB of RAM at $N=2048$.
+- Added `beam_batch_2048x128` benchmark in `benches/hankel_benchmark.rs` to track 2D optical propagation batch performance.
+
+### Deprecated
+- `HankelScalar::div_real_array`: Deprecated in favor of the pre-scaled transform matrix.
+- `HankelScalar::mul_real_array_assign`: Deprecated in favor of the pre-scaled transform matrix.
+
 ## [1.1.0] - 2026-08-31
 
 ### Added

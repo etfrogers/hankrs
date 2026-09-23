@@ -4,8 +4,8 @@ use amos_bessel_rs::bessel_k;
 use approx::assert_relative_eq;
 use hankrs::{HankelTransform, TransformType};
 #[cfg(test)]
-use ndarray::ArrayView1;
-use ndarray::{Array, Array1, ArrayView, Axis, Dim, Dimension, Ix1};
+use ndarray::Zip;
+use ndarray::{Array, Array1, Array2, ArrayView, ArrayView1, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num_complex::Complex64;
 use num_traits::pow::Pow;
@@ -660,6 +660,180 @@ fn test_round_trip_3d(
     let ht = transformer.qdht(&func, Axis(axis));
     let reconstructed = transformer.iqdht(&ht, Axis(axis));
     assert_arrays_equal(&func, &reconstructed, 1e-8, 1e-8);
+}
+
+#[rstest]
+fn test_round_trip_2d_complex(
+    #[values(0, 1)] axis: usize,
+    #[values(1, 100, 27)] two_d_size: usize,
+    #[values(0, 1, 2, 3, 4)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+
+    let mut dims = [two_d_size, two_d_size];
+    dims[axis] = transformer.radius().len();
+    let re = random_array(Dim(dims));
+    let im = random_array(Dim(dims));
+    let func = Zip::from(&re)
+        .and(&im)
+        .map_collect(|&r, &i| Complex64::new(r, i));
+
+    let ht = transformer.qdht(&func, Axis(axis));
+    let reconstructed = transformer.iqdht(&ht, Axis(axis));
+
+    assert_arrays_equal(
+        &func.mapv(|c| c.re),
+        &reconstructed.mapv(|c| c.re),
+        1e-8,
+        1e-8,
+    );
+    assert_arrays_equal(
+        &func.mapv(|c| c.im),
+        &reconstructed.mapv(|c| c.im),
+        1e-8,
+        1e-8,
+    );
+}
+
+#[rstest]
+fn test_2d_vs_1d_consistency_complex(
+    #[values(0, 1)] axis: usize,
+    #[values(0, 1, 2)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+    let mut dims = [16, 16];
+    dims[axis] = transformer.radius().len();
+    let re = random_array(Dim(dims));
+    let im = random_array(Dim(dims));
+    let func_2d = Zip::from(&re)
+        .and(&im)
+        .map_collect(|&r, &i| Complex64::new(r, i));
+
+    // 2D fast path
+    let ht_2d = transformer.qdht(&func_2d, Axis(axis));
+    let iht_2d = transformer.iqdht(&func_2d, Axis(axis));
+
+    // 1D line-by-line reference
+    let mut expected_ht = Array2::<Complex64>::zeros(func_2d.raw_dim());
+    let mut expected_iht = Array2::<Complex64>::zeros(func_2d.raw_dim());
+    for (line_in, mut line_out) in func_2d
+        .lanes(Axis(axis))
+        .into_iter()
+        .zip(expected_ht.lanes_mut(Axis(axis)))
+    {
+        line_out.assign(&transformer.qdht(&line_in.to_owned(), Axis(0)));
+    }
+    for (line_in, mut line_out) in func_2d
+        .lanes(Axis(axis))
+        .into_iter()
+        .zip(expected_iht.lanes_mut(Axis(axis)))
+    {
+        line_out.assign(&transformer.iqdht(&line_in.to_owned(), Axis(0)));
+    }
+
+    assert_arrays_equal(
+        &ht_2d.mapv(|c| c.re),
+        &expected_ht.mapv(|c| c.re),
+        1e-10,
+        1e-10,
+    );
+    assert_arrays_equal(
+        &ht_2d.mapv(|c| c.im),
+        &expected_ht.mapv(|c| c.im),
+        1e-10,
+        1e-10,
+    );
+    assert_arrays_equal(
+        &iht_2d.mapv(|c| c.re),
+        &expected_iht.mapv(|c| c.re),
+        1e-10,
+        1e-10,
+    );
+    assert_arrays_equal(
+        &iht_2d.mapv(|c| c.im),
+        &expected_iht.mapv(|c| c.im),
+        1e-10,
+        1e-10,
+    );
+}
+
+#[rstest]
+fn test_round_trip_3d_complex(
+    #[values(0, 1, 2)] axis: usize,
+    #[values(1, 10)] size: usize,
+    #[values(0, 1)] order_ind: usize,
+) {
+    let transformer = &TRANSFORMERS[order_ind];
+    let mut dims = [size, size, size];
+    dims[axis] = transformer.radius().len();
+    let re = random_array(Dim(dims));
+    let im = random_array(Dim(dims));
+    let func = Zip::from(&re)
+        .and(&im)
+        .map_collect(|&r, &i| Complex64::new(r, i));
+    let ht = transformer.qdht(&func, Axis(axis));
+    let reconstructed = transformer.iqdht(&ht, Axis(axis));
+    assert_arrays_equal(
+        &func.mapv(|c| c.re),
+        &reconstructed.mapv(|c| c.re),
+        1e-8,
+        1e-8,
+    );
+    assert_arrays_equal(
+        &func.mapv(|c| c.im),
+        &reconstructed.mapv(|c| c.im),
+        1e-8,
+        1e-8,
+    );
+}
+
+#[rstest]
+fn test_matrix_getters(#[values(0, 1, 2, 3, 4)] order_ind: usize) {
+    let transformer = &TRANSFORMERS[order_ind];
+    let n = transformer.n_points();
+
+    // 1. Dimensions
+    let t = transformer.transform_matrix();
+    assert_eq!(t.dim(), (n, n));
+
+    let m_qdht = transformer.qdht_matrix();
+    assert_eq!(m_qdht.dim(), (n, n));
+
+    let m_iqdht = transformer.iqdht_matrix();
+    assert_eq!(m_iqdht.dim(), (n, n));
+
+    let scale = transformer.iqdht_scale();
+    assert!(scale > 0.0);
+
+    // 2. Mathematical relation: M_iqdht = scale * M_qdht
+    let expected_m_iqdht = &m_qdht * scale;
+    assert_arrays_equal(m_iqdht.iter(), expected_m_iqdht.iter(), 1e-14, 1e-14);
+
+    // 3. Mathematical relation: scale = (v_max / r_max)^2
+    let expected_scale = (transformer.max_frequency() / transformer.max_radius()).powi(2);
+    assert_relative_eq!(scale, expected_scale, max_relative = 1e-12);
+
+    // 4. Matrix multiplication vs transform API equivalence:
+    // qdht_matrix.dot(&f) == transformer.qdht(&f, Axis(0))
+    let f = random_array(Dim(n));
+    let qdht_from_matrix = m_qdht.dot(&f);
+    let qdht_from_transformer = transformer.qdht(&f, Axis(0));
+    assert_arrays_equal(
+        qdht_from_matrix.iter(),
+        qdht_from_transformer.iter(),
+        1e-12,
+        1e-12,
+    );
+
+    // iqdht_matrix.dot(&F) == transformer.iqdht(&F, Axis(0))
+    let iqdht_from_matrix = m_iqdht.dot(&qdht_from_transformer);
+    let iqdht_from_transformer = transformer.iqdht(&qdht_from_transformer, Axis(0));
+    assert_arrays_equal(
+        iqdht_from_matrix.iter(),
+        iqdht_from_transformer.iter(),
+        1e-12,
+        1e-12,
+    );
 }
 
 #[rstest]
