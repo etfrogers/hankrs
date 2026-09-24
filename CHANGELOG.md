@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-24
+
+### Security & Dependencies
+- Updated `amos-bessel-rs` to `1.0.1`, removing the unmaintained `paste` transitive dependency.
+- Resolved security and soundness advisories in lockfile (`rustls` TLS 1.3 handshake fix `RUSTSEC-2026-0285`, `rand` soundness fix `RUSTSEC-2026-0097`).
+- Added `deny.toml` and GitHub Actions `Security & License Audit` workflow (`security.yml`) running automated `cargo-deny` and `cargo-audit` scans on push, PR, and weekly schedule.
+
+### Benchmark Maintenance
+- Cleaned up `benches/hankel_benchmark.rs`: renamed 1D QDHT group to `qdht1d`, removed obsolete manual 3-step scaling baseline (`direct_1d`), and removed temporary scratch baseline in batch beam propagation suite.
+
 ## [1.2.0] - 2026-09-23
 
 ### Added

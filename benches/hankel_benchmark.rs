@@ -1,9 +1,10 @@
 #[cfg(feature = "blas")]
 extern crate blas_src;
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use hankrs::HankelTransform;
 use ndarray::Axis;
+use std::hint::black_box;
 
 fn bench_creation(c: &mut Criterion) {
     let mut group = c.benchmark_group("creation");
