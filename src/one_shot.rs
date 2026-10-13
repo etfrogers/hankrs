@@ -23,6 +23,10 @@ use crate::hankel::{HankelError, HankelScalar, HankelTransform};
 ///
 /// # Returns
 /// A tuple containing the `k` coordinates of the transformed function and its values.
+///
+/// # Errors
+/// Returns [`HankelError::EmptyGrid`] if `r` is empty, or [`HankelError::InvalidRadius`]
+/// if the maximum value in `r` is non-positive or NaN.
 pub fn qdht<T: HankelScalar, D, S>(
     r: Array1<f64>,
     f: &ArrayBase<S, D>,
@@ -61,6 +65,10 @@ where
 ///
 /// # Returns
 /// A tuple containing the radial coordinates of the transformed function and its values.
+///
+/// # Errors
+/// Returns [`HankelError::EmptyGrid`] if `k` is empty, or [`HankelError::InvalidRadius`]
+/// if the maximum value in `k` produces a non-positive or NaN maximum radius.
 pub fn iqdht<T: HankelScalar, D, S>(
     k: Array1<f64>,
     f: &ArrayBase<S, D>,
@@ -97,6 +105,11 @@ where
 ///
 /// # Returns
 /// A tuple containing the `k` coordinates of the transformed function and its values.
+///
+/// # Errors
+/// Returns [`HankelError::EmptyGrid`] if `r` is empty, [`HankelError::InvalidOrder`]
+/// if `order` is negative, or [`HankelError::InvalidRadius`] if the maximum value in `r`
+/// is non-positive or NaN.
 ///
 /// # See Also
 /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
@@ -137,6 +150,11 @@ where
 ///
 /// # Returns
 /// A tuple containing the radial coordinates of the transformed function and its values.
+///
+/// # Errors
+/// Returns [`HankelError::EmptyGrid`] if `k` is empty, [`HankelError::InvalidOrder`]
+/// if `order` is negative, or [`HankelError::InvalidRadius`] if the maximum value in `k`
+/// produces a non-positive or NaN maximum radius.
 ///
 /// # See Also
 /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)

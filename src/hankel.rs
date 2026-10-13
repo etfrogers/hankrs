@@ -329,6 +329,10 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `n_points` is zero.
+    /// Returns [`HankelError::InvalidRadius`] if `max_radius` is non-positive or NaN.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Result<Self, HankelError> {
         Self::build(
             order,
@@ -348,6 +352,10 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `radial_grid` is empty.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `radial_grid` is non-positive or NaN.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
@@ -367,6 +375,10 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `k_grid` is empty.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `k_grid` produces a non-positive or NaN maximum radius.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
@@ -384,6 +396,11 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `n_points` is zero.
+    /// Returns [`HankelError::InvalidOrder`] if `order` is negative.
+    /// Returns [`HankelError::InvalidRadius`] if `max_radius` is non-positive or NaN.
     ///
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
@@ -412,6 +429,11 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
     ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `radial_grid` is empty.
+    /// Returns [`HankelError::InvalidOrder`] if `order` is negative.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `radial_grid` is non-positive or NaN.
+    ///
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
     /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
@@ -437,6 +459,11 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `k_grid` is empty.
+    /// Returns [`HankelError::InvalidOrder`] if `order` is negative.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `k_grid` produces a non-positive or NaN maximum radius.
     ///
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
@@ -638,6 +665,10 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::qdht`] (sampled at `self.r`).
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_transform_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -656,6 +687,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::qdht`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_transform_r_nd<T: HankelScalar, D: Dimension + RemoveAxis, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, D>,
@@ -690,6 +725,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_original_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -708,6 +747,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_original_r_nd<T: HankelScalar, S, D>(
         &self,
         function: &ArrayBase<S, D>,
@@ -746,6 +789,10 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::iqdht`] (sampled at `self.kr`).
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_transform_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -764,6 +811,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::iqdht`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_transform_k_nd<T: HankelScalar, S, D>(
         &self,
         function: &ArrayBase<S, D>,
@@ -800,6 +851,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_original_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -818,6 +873,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_original_k_nd<T: HankelScalar, S, D>(
         &self,
         function: &ArrayBase<S, D>,
@@ -1081,7 +1140,7 @@ pub enum HankelError {
     #[error("Maximum radius must be greater than zero")]
     InvalidRadius,
     /// An error that occurs when trying to interpolate onto a transform grid (k or r)
-    /// on a HankelTransform object that was not constructed with such a grid.
+    /// on a `HankelTransform` object that was not constructed with such a grid.
     #[error("Interpolation failed: {0}")]
     Interpolation(String),
     /// Indicates that the order of the Hankel transform is invalid.
