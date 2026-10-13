@@ -29,7 +29,7 @@ fn test_jn_spherical_zeros() {
         [15.7080, 17.2208, 18.6890, 20.1218, 21.5254],
     ];
 
-    for order in 0..5i32 {
+    for order in 0..5u32 {
         let zs = spherical_jn_zeros(order, 5);
         assert_relative_eq!(zs, expected_zeros.column(order as usize), epsilon = 1e-4);
     }
@@ -37,8 +37,8 @@ fn test_jn_spherical_zeros() {
     // test that the zeros are actually zeros of the spherical Bessel function
     for order in 0..10 {
         let zs = spherical_jn_zeros(order, 10);
-        for z in zs.iter() {
-            assert_relative_eq!(spherical_jn(order as f64, *z), 0.0, epsilon = 2e-12);
+        for z in &zs {
+            assert_relative_eq!(spherical_jn(f64::from(order), *z), 0.0, epsilon = 2e-12);
         }
     }
 }

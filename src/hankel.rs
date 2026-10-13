@@ -267,6 +267,7 @@ pub struct HankelTransform {
     transform_type: TransformType,
 }
 
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for HankelTransform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HankelTransform")
@@ -329,6 +330,10 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `n_points` is zero.
+    /// Returns [`HankelError::InvalidRadius`] if `max_radius` is non-positive or NaN.
     pub fn new(order: i32, max_radius: f64, n_points: usize) -> Result<Self, HankelError> {
         Self::build(
             order,
@@ -348,6 +353,10 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `radial_grid` is empty.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `radial_grid` is non-positive or NaN.
     pub fn new_from_r_grid(order: i32, radial_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
@@ -367,6 +376,10 @@ impl HankelTransform {
     /// # Arguments
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `k_grid` is empty.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `k_grid` produces a non-positive or NaN maximum radius.
     pub fn new_from_k_grid(order: i32, k_grid: Array1<f64>) -> Result<Self, HankelError> {
         Self::build(
             order,
@@ -384,6 +397,11 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `max_radius` - Radial extent of the transform `r_max`.
     /// * `n_points` - Number of sample points `N`.
+    ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `n_points` is zero.
+    /// Returns [`HankelError::InvalidOrder`] if `order` is negative.
+    /// Returns [`HankelError::InvalidRadius`] if `max_radius` is non-positive or NaN.
     ///
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
@@ -412,6 +430,11 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `radial_grid` - The radial grid that will be used to sample input functions.
     ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `radial_grid` is empty.
+    /// Returns [`HankelError::InvalidOrder`] if `order` is negative.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `radial_grid` is non-positive or NaN.
+    ///
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
     /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
@@ -438,6 +461,11 @@ impl HankelTransform {
     /// * `order` - Transform order `p`.
     /// * `k_grid` - The `k`-space grid that will be used to sample input functions.
     ///
+    /// # Errors
+    /// Returns [`HankelError::EmptyGrid`] if `k_grid` is empty.
+    /// Returns [`HankelError::InvalidOrder`] if `order` is negative.
+    /// Returns [`HankelError::InvalidRadius`] if the maximum value in `k_grid` produces a non-positive or NaN maximum radius.
+    ///
     /// # See Also
     /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
     /// gives details of and demonstrates verified transform pairs (Gaussian and top-hat) for the spherical QDHT.
@@ -463,15 +491,16 @@ impl HankelTransform {
         if n_points == 0 {
             return Err(HankelError::EmptyGrid);
         }
-        if transform_type == TransformType::Spherical && order < 0 {
-            return Err(HankelError::InvalidOrder);
-        }
         let zero_fun: fn(i32, usize) -> Array1<f64> = match transform_type {
             TransformType::Polar => |order: i32, n_points| {
                 Array1::from_vec(bessel_zeros(BesselFunType::J, order, n_points, 1e-6))
             },
             TransformType::Spherical => {
-                |order: i32, n_points: usize| spherical_jn_zeros(order, n_points)
+                if order < 0 {
+                    return Err(HankelError::InvalidOrder);
+                }
+                #[allow(clippy::cast_sign_loss)]
+                |order: i32, n_points: usize| spherical_jn_zeros(order as u32, n_points)
             }
         };
         // Calculate N+1 roots must be calculated before max_radius can be derived from k_grid
@@ -508,7 +537,7 @@ impl HankelTransform {
                 (jp1.clone(), jp1.clone() / max_radius, jp1 / max_v)
             }
             TransformType::Spherical => {
-                let jp1 = alpha.map(|a| spherical_jn((order + 1) as f64, *a).abs());
+                let jp1 = alpha.map(|a| spherical_jn(f64::from(order + 1), *a).abs());
                 (
                     jp1.clone(),
                     jp1.clone() / max_radius,
@@ -529,7 +558,7 @@ impl HankelTransform {
                 let jp_val = match transform_type {
                     TransformType::Polar => bessel_j_real(order, (a_i * a_j) / s),
                     TransformType::Spherical => {
-                        spherical_jn(order as f64, (a_i * a_j) / s) * (PI / (2.0 * s)).sqrt()
+                        spherical_jn(f64::from(order), (a_i * a_j) / s) * (PI / (2.0 * s)).sqrt()
                     }
                 };
                 // Write directly into the final T matrix
@@ -567,38 +596,44 @@ impl HankelTransform {
             t,
             m_qdht,
             iqdht_scale,
-            jr,
             jv,
+            jr,
             transform_type,
         })
     }
 
     /// Returns the order `p` of the transform.
+    #[must_use]
     pub fn order(&self) -> i32 {
         self.order
     }
 
     /// Returns the maximum radius `r_max` of the transform.
+    #[must_use]
     pub fn max_radius(&self) -> f64 {
         self.max_radius
     }
 
     /// Returns the maximum radial wavenumber `kr_max` of the transform.
+    #[must_use]
     pub fn max_kr(&self) -> f64 {
         self.max_kr
     }
 
     /// Returns the maximum frequency `v_max` of the transform.
+    #[must_use]
     pub fn max_frequency(&self) -> f64 {
         self.max_v
     }
 
     /// Returns the transform type (polar or spherical) that the object will perform.
+    #[must_use]
     pub fn transform_type(&self) -> TransformType {
         self.transform_type
     }
 
     /// Returns the number of sample points `N`.
+    #[must_use]
     pub fn n_points(&self) -> usize {
         self.n_points
     }
@@ -608,8 +643,9 @@ impl HankelTransform {
     ///
     /// # Returns
     /// An `Option` containing a view of the original radial grid used to construct the object.
-    pub fn original_radial_grid<'a>(&'a self) -> Option<ArrayView1<'a, f64>> {
-        self.original_radial_grid.as_ref().map(|a| a.view())
+    #[must_use]
+    pub fn original_radial_grid(&self) -> Option<ArrayView1<'_, f64>> {
+        self.original_radial_grid.as_ref().map(ArrayBase::view)
     }
 
     /// Return the original k grid used to construct the object, or `None`
@@ -617,8 +653,9 @@ impl HankelTransform {
     ///
     /// # Returns
     /// An `Option` containing a view of the original k grid used to construct the object.
-    pub fn original_k_grid<'a>(&'a self) -> Option<ArrayView1<'a, f64>> {
-        self.original_k_grid.as_ref().map(|a| a.view())
+    #[must_use]
+    pub fn original_k_grid(&self) -> Option<ArrayView1<'_, f64>> {
+        self.original_k_grid.as_ref().map(ArrayBase::view)
     }
 
     /// Interpolate a function, assumed to have been given at the original radial
@@ -638,6 +675,10 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::qdht`] (sampled at `self.r`).
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_transform_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -656,6 +697,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::qdht`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_transform_r_nd<T: HankelScalar, D: Dimension + RemoveAxis, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, D>,
@@ -690,6 +735,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_original_r<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -708,6 +757,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_radial_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original radial grid.
     pub fn to_original_r_nd<T: HankelScalar, S, D>(
         &self,
         function: &ArrayBase<S, D>,
@@ -746,6 +799,10 @@ impl HankelTransform {
     /// # Returns
     /// Interpolated function suitable for passing to
     /// [`HankelTransform::iqdht`] (sampled at `self.kr`).
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_transform_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -764,6 +821,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function suitable for passing to [`HankelTransform::iqdht`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_transform_k_nd<T: HankelScalar, S, D>(
         &self,
         function: &ArrayBase<S, D>,
@@ -800,6 +861,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_original_k<T: HankelScalar, S: Data<Elem = T>>(
         &self,
         function: &ArrayBase<S, Ix1>,
@@ -818,6 +883,10 @@ impl HankelTransform {
     ///
     /// # Returns
     /// Interpolated function at the points held in [`HankelTransform::original_k_grid`].
+    ///
+    /// # Errors
+    /// Returns [`HankelError::Interpolation`] if the [`HankelTransform`] object was not constructed
+    /// with an original `k`-space grid.
     pub fn to_original_k_nd<T: HankelScalar, S, D>(
         &self,
         function: &ArrayBase<S, D>,
@@ -867,6 +936,7 @@ impl HankelTransform {
     /// # Panics
     /// Panics if `axis` is out of bounds for `fr`, or if the length of `fr` along `axis`
     /// does not match [`HankelTransform::n_points`].
+    #[must_use]
     pub fn qdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fr: &ArrayBase<S, D>,
@@ -902,6 +972,7 @@ impl HankelTransform {
     /// # Panics
     /// Panics if `axis` is out of bounds for `fv`, or if the length of `fv` along `axis`
     /// does not match [`HankelTransform::n_points`].
+    #[must_use]
     pub fn iqdht<T: HankelScalar, D: Dimension, S>(
         &self,
         fv: &ArrayBase<S, D>,
@@ -918,6 +989,7 @@ impl HankelTransform {
         out
     }
 
+    #[must_use]
     fn transform_array<T: HankelScalar, D: Dimension, S>(
         &self,
         f: &ArrayBase<S, D>,
@@ -949,11 +1021,11 @@ impl HankelTransform {
         }
 
         // Fallback for 3D/N-D: Rayon lane iteration
-        self.transform_by_lines(f, axis, matrix)
+        Self::transform_by_lines(f, axis, matrix)
     }
 
+    #[must_use]
     fn transform_by_lines<T: HankelScalar, D: Dimension, S>(
-        &self,
         f: &ArrayBase<S, D>,
         axis: Axis,
         matrix: ArrayView2<f64>,
@@ -976,37 +1048,44 @@ impl HankelTransform {
     }
 
     /// Returns a view of the base transform matrix `T`.
-    pub fn transform_matrix<'a>(&'a self) -> ArrayView2<'a, f64> {
+    #[must_use]
+    pub fn transform_matrix(&self) -> ArrayView2<'_, f64> {
         self.t.view()
     }
 
     /// Returns a view of the pre-scaled QDHT transform matrix.
-    pub fn qdht_matrix<'a>(&'a self) -> ArrayView2<'a, f64> {
+    #[must_use]
+    pub fn qdht_matrix(&self) -> ArrayView2<'_, f64> {
         self.m_qdht.view()
     }
 
     /// Returns the pre-scaled IQDHT transform matrix: `M_iqdht = iqdht_scale * M_qdht`.
+    #[must_use]
     pub fn iqdht_matrix(&self) -> Array2<f64> {
         &self.m_qdht * self.iqdht_scale
     }
 
     /// Returns the scalar conversion factor relating IQDHT to QDHT: `M_iqdht = iqdht_scale * M_qdht`.
+    #[must_use]
     pub fn iqdht_scale(&self) -> f64 {
         self.iqdht_scale
     }
 
     /// Returns a view of the radial coordinate vector `r`.
-    pub fn radius<'a>(&'a self) -> ArrayView1<'a, f64> {
+    #[must_use]
+    pub fn radius(&self) -> ArrayView1<'_, f64> {
         self.r.view()
     }
 
     /// Returns a view of the frequency coordinate vector `v`.
-    pub fn frequency<'a>(&'a self) -> ArrayView1<'a, f64> {
+    #[must_use]
+    pub fn frequency(&self) -> ArrayView1<'_, f64> {
         self.v.view()
     }
 
     /// Returns a view of the radial wave number coordinate vector `kr`.
-    pub fn kr<'a>(&'a self) -> ArrayView1<'a, f64> {
+    #[must_use]
+    pub fn kr(&self) -> ArrayView1<'_, f64> {
         self.kr.view()
     }
 
@@ -1047,13 +1126,13 @@ where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
 {
-    let (y0, inverse_perms) = if axis != Axis(0) {
+    let (y0, inverse_perms) = if axis == Axis(0) {
+        (y0, None)
+    } else {
         let (forward_perms, inverse_perms) = perms::<D>(axis, y0.ndim());
         let y0_ = y0.permuted_axes(forward_perms);
 
         (y0_, Some(inverse_perms))
-    } else {
-        (y0, None)
     };
     let interpolator = Interp1DBuilder::new(y0.into_dyn())
         .x(x0)
@@ -1081,7 +1160,7 @@ pub enum HankelError {
     #[error("Maximum radius must be greater than zero")]
     InvalidRadius,
     /// An error that occurs when trying to interpolate onto a transform grid (k or r)
-    /// on a HankelTransform object that was not constructed with such a grid.
+    /// on a `HankelTransform` object that was not constructed with such a grid.
     #[error("Interpolation failed: {0}")]
     Interpolation(String),
     /// Indicates that the order of the Hankel transform is invalid.
@@ -1100,6 +1179,7 @@ pub enum TransformType {
 
 impl TransformType {
     /// Returns the string slice representation of the transform type (`"polar"` or `"spherical"`).
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             TransformType::Polar => "polar",
@@ -1115,8 +1195,10 @@ impl Display for TransformType {
 }
 
 // adapted from SciPy Cookbook https://scipy-cookbook.readthedocs.io/items/SphericalBesselZeros.html
-pub(super) fn spherical_jn_zeros(order: i32, n_points: usize) -> Array1<f64> {
-    let mut zerosj = Array2::<f64>::zeros((order as usize + 1, n_points));
+pub(super) fn spherical_jn_zeros(order: u32, n_points: usize) -> Array1<f64> {
+    let order_usize = order as usize;
+    let mut zerosj = Array2::<f64>::zeros((order_usize + 1, n_points));
+    #[allow(clippy::cast_precision_loss)]
     for (i, v) in zerosj.row_mut(0).iter_mut().enumerate() {
         *v = (i as f64 + 1.0) * PI;
     }
@@ -1124,7 +1206,8 @@ pub(super) fn spherical_jn_zeros(order: i32, n_points: usize) -> Array1<f64> {
         return zerosj.row(0).to_owned();
     }
 
-    let mut points = Array1::from_shape_fn(n_points + order as usize, |j| (j as f64 + 1.0) * PI);
+    #[allow(clippy::cast_precision_loss)]
+    let mut points = Array1::from_shape_fn(n_points + order_usize, |j| (j as f64 + 1.0) * PI);
 
     // Setup the exact same convergence tolerances as SciPy's default brentq
     // SciPy defaults: xtol=2e-12, maxiter=100
@@ -1133,12 +1216,13 @@ pub(super) fn spherical_jn_zeros(order: i32, n_points: usize) -> Array1<f64> {
         max_iter: 100,
     };
 
-    for i in 1..=order as usize {
-        for j in 0..(n_points + (order as usize) - i) {
+    for i in 1..=order_usize {
+        for j in 0..(n_points + (order_usize) - i) {
             let a = points[j];
             let b = points[j + 1];
 
             // find_root_brent requires opposite signs at `a` and `b` (a valid bracket).
+            #[allow(clippy::cast_precision_loss)]
             let root = find_root_brent(a, b, |r| spherical_jn(i as f64, r), &mut convergency)
                 .expect("Failed to converge or bracket the root");
 
@@ -1151,7 +1235,7 @@ pub(super) fn spherical_jn_zeros(order: i32, n_points: usize) -> Array1<f64> {
             .slice_mut(s![..n_points])
             .assign(&points.slice(s![..n_points]));
     }
-    zerosj.row(order as usize).to_owned()
+    zerosj.row(order_usize).to_owned()
 }
 
 pub(super) fn spherical_jn(order: f64, z: f64) -> f64 {

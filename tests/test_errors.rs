@@ -61,7 +61,7 @@ fn test_error_invalid_order() {
 fn test_panic_qdht_dimension_mismatch() {
     let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
     let wrong_size_data = array![1.0, 2.0, 3.0]; // len 3 != 256
-    transformer.qdht(&wrong_size_data, ndarray::Axis(0));
+    let _ = transformer.qdht(&wrong_size_data, ndarray::Axis(0));
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn test_panic_qdht_dimension_mismatch() {
 fn test_panic_iqdht_dimension_mismatch() {
     let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
     let wrong_size_data = array![1.0, 2.0, 3.0]; // len 3 != 256
-    transformer.iqdht(&wrong_size_data, ndarray::Axis(0));
+    let _ = transformer.iqdht(&wrong_size_data, ndarray::Axis(0));
 }
 
 #[test]
@@ -96,5 +96,5 @@ fn test_panic_transform_2d_complex_invalid_axis() {
 fn test_panic_qdht_axis_out_of_bounds() {
     let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
     let data = ndarray::Array2::<f64>::zeros((256, 10));
-    transformer.qdht(&data, ndarray::Axis(2));
+    let _ = transformer.qdht(&data, ndarray::Axis(2));
 }
