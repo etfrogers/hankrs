@@ -92,7 +92,7 @@ fn test_panic_transform_2d_complex_invalid_axis() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "index out of bounds: the len is 2 but the index is 2")]
 fn test_panic_qdht_axis_out_of_bounds() {
     let transformer = HankelTransform::new(0, 10.0, 256).unwrap();
     let data = ndarray::Array2::<f64>::zeros((256, 10));

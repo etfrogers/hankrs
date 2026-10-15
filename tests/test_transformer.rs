@@ -1,3 +1,4 @@
+#![allow(clippy::used_underscore_binding)]
 mod utils;
 
 use amos_bessel_rs::bessel_k;
@@ -5,7 +6,7 @@ use approx::assert_relative_eq;
 use hankrs::{HankelTransform, TransformType};
 #[cfg(test)]
 use ndarray::Zip;
-use ndarray::{Array, Array1, Array2, ArrayView, ArrayView1, Axis, Dim, Dimension, Ix1};
+use ndarray::{Array, Array1, Array2, ArrayRef, ArrayRef1, Axis, Dim, Dimension, Ix1};
 use ndarray_stats::{DeviationExt, QuantileExt};
 use num_complex::Complex64;
 use num_traits::pow::Pow;
@@ -41,7 +42,7 @@ static TRANSFORMERS_K: LazyLock<[HankelTransform; 5]> = LazyLock::new(|| {
     ]
 });
 
-fn random_array_like<D: Dimension>(v: ArrayView<f64, D>) -> Array<f64, D> {
+fn random_array_like<D: Dimension>(v: &ArrayRef<f64, D>) -> Array<f64, D> {
     random_array(v.raw_dim())
 }
 
@@ -55,7 +56,7 @@ struct Shape<'a> {
     f: &'a dyn Fn(f64) -> f64,
 }
 
-impl<'a> Debug for Shape<'a> {
+impl Debug for Shape<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Shape").field("name", &self.name).finish()
     }
@@ -94,7 +95,7 @@ fn test_getters(transformer_zero_order: &HankelTransform) {
     assert_relative_eq!(
         transformer_zero_order.max_kr(),
         transformer_zero_order.max_frequency() * 2.0 * PI
-    )
+    );
 }
 
 #[rstest]
@@ -154,7 +155,7 @@ fn test_transform_type_display_and_to_string() {
 
 #[rstest]
 fn test_errors(radius: Array1<f64>) {
-    let fun = random_array_like(radius.view());
+    let fun = random_array_like(&radius);
 
     let transformer = HankelTransform::new(0, 3.0, 256).unwrap();
     assert_eq!(transformer.transform_type(), TransformType::Polar);
@@ -185,7 +186,7 @@ fn test_errors(radius: Array1<f64>) {
 
 #[rstest]
 fn test_round_trip(transformer_zero_order: &HankelTransform) {
-    let fun = random_array_like(transformer_zero_order.radius());
+    let fun = random_array_like(&transformer_zero_order.radius());
     let ht = transformer_zero_order.qdht(&fun, Axis(0));
     let reconstructed = transformer_zero_order.iqdht(&ht, Axis(0));
     assert_relative_eq!(
@@ -193,7 +194,7 @@ fn test_round_trip(transformer_zero_order: &HankelTransform) {
         reconstructed.as_slice().unwrap(),
         max_relative = -1.0,
         epsilon = 1e-9
-    )
+    );
 }
 
 // -------------------
@@ -213,14 +214,7 @@ fn test_round_trip_r_interpolation(
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_r(&fun).unwrap();
     let reconstructed_func = transformer.to_original_r(&transform_func).unwrap();
-    assert_relative_eq_with_end_points(
-        reconstructed_func.view(),
-        fun.view(),
-        1e-4,
-        1e-3,
-        0.0,
-        2e-5,
-    );
+    assert_relative_eq_with_end_points(&reconstructed_func, &fun, 1e-4, 1e-3, 0.0, 2e-5);
 }
 
 #[apply(smooth_shapes)]
@@ -233,19 +227,12 @@ fn test_round_trip_k_interpolation(
 ) {
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let transformer = &TRANSFORMERS_K[order as usize];
+    let transformer = &TRANSFORMERS_K[usize::try_from(order).unwrap()];
 
     let fun = radius.mapv_into(shape.f);
     let transform_func = transformer.to_transform_k(&fun).unwrap();
     let reconstructed_func = transformer.to_original_k(&transform_func).unwrap();
-    assert_relative_eq_with_end_points(
-        reconstructed_func.view(),
-        fun.view(),
-        1e-4,
-        1e-3,
-        0.0,
-        2e-7,
-    );
+    assert_relative_eq_with_end_points(&reconstructed_func, &fun, 1e-4, 1e-3, 0.0, 2e-7);
 }
 
 #[apply(smooth_shapes)]
@@ -273,16 +260,16 @@ fn test_round_trip_with_interpolation(
     }
     if shape.name == "r^2" {
         r_tol_body = -1.0;
-        a_tol_body = 2e-4
+        a_tol_body = 2e-4;
     }
     assert_relative_eq_with_end_points(
-        fun.view(),
-        reconstructed.view(),
+        &fun,
+        &reconstructed,
         r_tol_body,
         r_tol_end,
         a_tol_body,
         a_tol_end,
-    )
+    );
 }
 
 #[rstest]
@@ -301,7 +288,7 @@ fn test_original_rk_grid() {
     let transformer_k = HankelTransform::new_from_k_grid(0, k_1d).unwrap();
     // no error
     assert!(transformer_k.original_k_grid().is_some());
-    assert!(transformer_k.original_radial_grid().is_none())
+    assert!(transformer_k.original_radial_grid().is_none());
 }
 
 // ---------------
@@ -333,7 +320,7 @@ fn intensity(v: f64) -> f64 {
     v.abs().powf(2.0)
 }
 
-type TransformFunc = dyn Fn(ArrayView1<f64>, f64, i32) -> Array1<f64>;
+type TransformFunc = dyn Fn(&ArrayRef1<f64>, f64, i32) -> Array1<f64>;
 
 #[rstest]
 #[case("Jinc", &generalised_jinc)]
@@ -343,22 +330,22 @@ fn test_energy_conservation(
     #[case] func: &TransformFunc,
     #[values(0, 1, 2, 3, 4)] order: i32,
 ) {
-    let integrate_over_r = |r: ArrayView1<f64>, y| -> f64 {
-        let integrand: Array1<f64> = 2.0 * PI * &r * y;
+    let integrate_over_r = |r: &ArrayRef1<f64>, y| -> f64 {
+        let integrand: Array1<f64> = 2.0 * PI * r * y;
         (0..(r.len() - 1))
             .map(|i| (r[i + 1] - r[i]) * (integrand[i + 1] + integrand[i]) / 2.0)
             .sum()
     };
 
     let transformer = HankelTransform::new(order, 10.0, 1024).unwrap();
-    let fun = func(transformer.radius(), 0.5, order);
+    let fun = func(&transformer.radius(), 0.5, order);
 
     let intensity_before = fun.mapv(intensity);
-    let energy_before = integrate_over_r(transformer.radius(), intensity_before);
+    let energy_before = integrate_over_r(&transformer.radius(), intensity_before);
 
     let ht = transformer.qdht(&fun, Axis(0));
     let intensity_after = ht.mapv(intensity);
-    let energy_after = integrate_over_r(transformer.frequency(), intensity_after);
+    let energy_after = integrate_over_r(&transformer.frequency(), intensity_after);
 
     assert_relative_eq!(energy_before, energy_after, epsilon = 0.006);
 }
@@ -372,8 +359,8 @@ fn test_jinc(#[values(1.0, 0.7, 0.1)] a: f64, #[values(0, 1, 2, 3, 4)] order_ind
     let transformer = &TRANSFORMERS[order_ind];
     // let transformer = HankelTransform::new_from_r_grid(order, radius).unwrap();
     let order = transformer.order();
-    let f = generalised_jinc(transformer.radius(), a, order);
-    let expected_ht = generalised_top_hat(transformer.frequency(), a, order);
+    let f = generalised_jinc(&transformer.radius(), a, order);
+    let expected_ht = generalised_top_hat(&transformer.frequency(), a, order);
     let actual_ht = transformer.qdht(&f, Axis(0));
     let err = expected_ht.mean_abs_err(&actual_ht).unwrap();
     assert!(err < 1e-3);
@@ -383,8 +370,8 @@ fn test_jinc(#[values(1.0, 0.7, 0.1)] a: f64, #[values(0, 1, 2, 3, 4)] order_ind
 fn test_top_hat(#[values(1.0, 1.5, 0.1)] a: f64, #[values(0, 1, 2, 3, 4)] order_ind: usize) {
     let transformer = &TRANSFORMERS[order_ind];
     let order = transformer.order();
-    let f = generalised_top_hat(transformer.radius(), a, order);
-    let expected_ht = generalised_jinc(transformer.frequency(), a, order);
+    let f = generalised_top_hat(&transformer.radius(), a, order);
+    let expected_ht = generalised_jinc(&transformer.frequency(), a, order);
     let actual_ht = transformer.qdht(&f.into_dyn(), Axis(0));
     let err = expected_ht
         .mean_abs_err(&actual_ht.into_dimensionality::<Ix1>().unwrap())
@@ -536,7 +523,7 @@ fn test_sinc(#[values(1, 4)] p: i32) {
     let gamma = 5.0;
     let fun = transformer.radius().mapv(|r| sinc(2.0 * PI * gamma * r));
 
-    let pf = p as f64;
+    let pf = f64::from(p);
     let expected_ht = frequency.mapv(|v| {
         let norm_gamma_v = (gamma.powi(2) - v.powi(2)).sqrt();
         let norm_v_gamma = (v.powi(2) - gamma.powi(2)).sqrt();
@@ -567,12 +554,12 @@ fn test_sinc(#[values(1, 4)] p: i32) {
 #[rstest]
 fn test_debug_impl() {
     let transformer = HankelTransform::new(1, 3.0, 256).unwrap();
-    let debug_str = format!("{:?}", transformer);
-    assert!(!debug_str.is_empty());
+    let debug_str = format!("{transformer:?}");
+    assert_ne!(debug_str, "");
 }
 
 /*
-fn _plot_stuff(x: ArrayView1<f64>, y1: ArrayView1<f64>, y2: ArrayView1<f64>, p: i32) {
+fn _plot_stuff(x: &ArrayRef1<f64>, y1: &ArrayRef1<f64>, y2: &ArrayRef1<f64>, p: i32) {
     let out_file_name = format!("graph{p}.png");
     use plotters::prelude::*;
     let root = BitMapBackend::new(&out_file_name, (1024, 768)).into_drawing_area();
@@ -865,12 +852,12 @@ fn test_round_trip_r_interpolation_2d(
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let amplitude = random_array(Dim(10));
-    let func_1d = radius.mapv(shape.f);
+    let amplitude = &random_array(Dim(10));
+    let func_1d = &radius.mapv(shape.f);
     let func = if axis == 0 {
-        outer(func_1d.view(), amplitude.view())
+        outer(func_1d, amplitude)
     } else {
-        outer(amplitude.view(), func_1d.view())
+        outer(amplitude, func_1d)
     };
     let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
     let reconstructed_func = transformer
@@ -891,12 +878,12 @@ fn test_round_trip_r_interpolation_2d_complex(
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let amplitude = random_array(Dim(10)).mapv(|v| Complex64::new(v, 0.0));
-    let func_1d = radius.mapv(shape.f).mapv(|v| Complex64::new(v, v));
+    let amplitude = &random_array(Dim(10)).mapv(|v| Complex64::new(v, 0.0));
+    let func_1d = &radius.mapv(shape.f).mapv(|v| Complex64::new(v, v));
     let func = if axis == 0 {
-        outer_complex(func_1d.view(), amplitude.view())
+        outer_complex(func_1d, amplitude)
     } else {
-        outer_complex(amplitude.view(), func_1d.view())
+        outer_complex(amplitude, func_1d)
     };
     let transform_func = transformer.to_transform_r_nd(&func, Axis(axis)).unwrap();
     let reconstructed_func = transformer
@@ -923,17 +910,17 @@ fn test_round_trip_k_interpolation_2d(
     #[values(0, 1, 2, 3, 4)] order: i32,
     #[values(0, 1)] axis: usize,
 ) {
-    let transformer = &TRANSFORMERS_K[order as usize];
+    let transformer = &TRANSFORMERS_K[usize::try_from(order).unwrap()];
     let k_grid = transformer.original_k_grid().unwrap();
 
     // the function must be smoothish for interpolation
     // to work. Random every point doesn't work
-    let amplitude = random_array(Dim(10));
+    let amplitude = &random_array(Dim(10));
     let func_1d = &k_grid.mapv(shape.f);
     let func = if axis == 0 {
-        outer(func_1d.view(), amplitude.view())
+        outer(func_1d, amplitude)
     } else {
-        outer(amplitude.view(), func_1d.view())
+        outer(amplitude, func_1d)
     };
     let transform_func = transformer.to_transform_k_nd(&func, Axis(axis)).unwrap();
     let reconstructed_func = transformer
@@ -950,20 +937,14 @@ fn test_jinc2d(
     #[values(0, 1, 2, 3, 4)] order_ind: usize,
 ) {
     let transformer = &TRANSFORMERS[order_ind];
-    let f = generalised_jinc(transformer.radius(), a, transformer.order());
+    let f = &generalised_jinc(&transformer.radius(), a, transformer.order());
     // using a range up to 2.0 to make error magnitude the same as 1D case.
-    let second_axis = Array1::linspace(0.0, 2.0, two_d_size);
-    let expected_ht = generalised_top_hat(transformer.frequency(), a, transformer.order());
+    let second_axis = &Array1::linspace(0.0, 2.0, two_d_size);
+    let expected_ht = generalised_top_hat(&transformer.frequency(), a, transformer.order());
     let (f_array, expected_ht_array) = if axis == 0 {
-        (
-            outer(f.view(), second_axis.view()),
-            outer(expected_ht.view(), second_axis.view()),
-        )
+        (outer(f, second_axis), outer(&expected_ht, second_axis))
     } else {
-        (
-            outer(second_axis.view(), f.view()),
-            outer(second_axis.view(), expected_ht.view()),
-        )
+        (outer(second_axis, f), outer(second_axis, &expected_ht))
     };
     let actual_ht = transformer.qdht(&f_array, Axis(axis));
     let error = (expected_ht_array).mean_abs_err(&actual_ht).unwrap();

@@ -6,6 +6,7 @@ use std::f64::consts::PI;
 
 use crate::helper::{imagesc, plot_1d, plot_1d_compare};
 
+#[allow(clippy::too_many_lines, clippy::similar_names)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nr = 1024;
     let r_max = 5e-3;
@@ -24,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up the electric field profile at z = 0, and resample onto the correct radial grid
     // (transformer.radius()) as required for the QDHT.
-    let er_real = helper::gauss1d(r.view(), 0.0, dr);
+    let er_real = helper::gauss1d(&r, 0.0, dr);
     let er: Array1<Complex64> = er_real.mapv(|v| Complex64::new(v, 0.0));
     let er_h = transformer.to_transform_r(&er).unwrap();
 
@@ -43,10 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d_compare(
         "usage_example_initial_field.png",
-        r_mm.view(),
-        abs_er.view(),
-        transformer_r_mm.view(),
-        abs_er_h.view(),
+        &r_mm,
+        &abs_er,
+        &transformer_r_mm,
+        &abs_er_h,
         "|E(r)|^2",
         "|E(H.r)|^2",
         "Initial electric field distribution",
@@ -57,11 +58,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let abs_ekr_h = ekr_h.mapv(|c| c.norm_sqr());
-    let ht_max = abs_ekr_h.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let ht_max = abs_ekr_h.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     plot_1d(
         "usage_example_k_vector.png",
-        transformer.kr(),
-        abs_ekr_h.view(),
+        &transformer.kr(),
+        &abs_ekr_h,
         "Radial wave-vector distribution",
         "Radial wave-vector (k_r) /rad m^-1",
         "Field intensity /arb.",
@@ -96,9 +97,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     imagesc(
         "usage_example_irz.png",
-        z_mm.view(),
-        r_mm.view(),
-        irz.view(),
+        &z_mm,
+        &r_mm,
+        &irz,
         "Radial field intensity",
         "Propagation distance (z) /mm",
         "Radial position (r) /mm",
@@ -114,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let peak = irz_norm
             .column(i)
             .iter()
-            .cloned()
+            .copied()
             .fold(f64::NEG_INFINITY, f64::max);
         if peak > 0.0 {
             let mut col = irz_norm.column_mut(i);
@@ -124,9 +125,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     imagesc(
         "usage_example_irz_norm.png",
-        z_mm.view(),
-        r_mm.view(),
-        irz_norm.view(),
+        &z_mm,
+        &r_mm,
+        &irz_norm,
         "Normalised Radial field intensity",
         "Propagation distance (z) /mm",
         "Radial position (r) /mm",
@@ -149,15 +150,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Now plot the result to check it is the same as the loop approach
     imagesc(
         "usage_example_irz_vec.png",
-        z_mm.view(),
-        r_mm.view(),
-        irz_vec.view(),
+        &z_mm,
+        &r_mm,
+        &irz_vec,
         "Radial field intensity as a function of propagation for annular beam",
         "Propagation distance (z) /mm",
         "Radial position (r) /mm",
         0.0..1.0,
     )?;
 
+    #[allow(clippy::cast_precision_loss)]
+    let total_n = (nr * nz) as f64;
     // Assert the two approaches produce the same intensity
     // Assert matches
     let error: f64 = irz
@@ -165,7 +168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .zip(irz_vec.iter())
         .map(|(&a, &b)| (a - b).abs())
         .sum::<f64>()
-        / (nr * nz) as f64;
+        / total_n;
     assert!(error < 1e-10);
 
     Ok(())
