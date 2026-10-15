@@ -26,11 +26,11 @@ blas = ["ndarray/blas"]
 all-features = true
 
 [dependencies]
-ndarray = { version = "0.16", features = ["approx", "rayon"] }
-ndarray-stats = "0.6.0"
+ndarray = { version = "0.17", features = ["approx", "rayon"] }
+ndarray-stats = "0.7.0"
 num-complex = "0.4.6"
 approx = "0.5.1"
-ndarray-interp = "0.5.0"
+ndarray-interp = "0.6.0"
 amos-bessel-rs = "1.0.1"
 real-bessel = "1.0.0"
 bessel-zeros = "1.0.0"

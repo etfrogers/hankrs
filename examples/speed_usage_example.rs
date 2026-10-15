@@ -64,7 +64,7 @@ fn propagate_using_single_shot(
         let (r_transform, field_at_z) =
             iqdht(kr.clone(), &hankel_transform_at_z, 0, Axis(0)).unwrap();
 
-        let field_slice = Complex64::spline(r_transform.view(), field_at_z.view(), r, Axis(0));
+        let field_slice = Complex64::spline(&r_transform, &field_at_z, &r, Axis(0));
         propagated_field.column_mut(n).assign(&field_slice);
     }
     propagated_field.mapv(|c| c.norm_sqr())

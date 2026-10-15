@@ -78,7 +78,7 @@ fn test_panic_transform_2d_f64_invalid_axis() {
     use hankrs::HankelScalar;
     let matrix = ndarray::Array2::<f64>::zeros((4, 4));
     let input = ndarray::Array2::<f64>::zeros((4, 4));
-    f64::transform_2d(matrix.view(), input.view(), ndarray::Axis(2));
+    f64::transform_2d(&matrix, &input, ndarray::Axis(2));
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn test_panic_transform_2d_complex_invalid_axis() {
     use num_complex::Complex64;
     let matrix = ndarray::Array2::<f64>::zeros((4, 4));
     let input = ndarray::Array2::<Complex64>::zeros((4, 4));
-    Complex64::transform_2d(matrix.view(), input.view(), ndarray::Axis(2));
+    Complex64::transform_2d(&matrix, &input, ndarray::Axis(2));
 }
 
 #[test]
