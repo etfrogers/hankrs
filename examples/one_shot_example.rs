@@ -21,8 +21,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d(
         "one_shot_example_f.png",
-        r.view(),
-        f.view(),
+        &r,
+        &f,
         "Jinc Function",
         "Radius /m",
         "Amplitude",
@@ -36,8 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // As expected, this is a top-hat function bandlimited to k<1, except for numerical error.
     plot_1d(
         "one_shot_example_ht.png",
-        kr.view(),
-        ht.view(),
+        &kr,
+        &ht,
         "Hankel Transform (Top Hat)",
         "Radial wavevector /m^-1",
         "Amplitude",
@@ -52,8 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d(
         "one_shot_example_tophat.png",
-        r2.view(),
-        f2.view(),
+        &r2,
+        &f2,
         "Top Hat Function",
         "Radius /m",
         "Amplitude",
@@ -66,8 +66,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d(
         "one_shot_example_jinc.png",
-        kr2.view(),
-        ht2.view(),
+        &kr2,
+        &ht2,
         "QDHT of a Top Hat Function",
         "k_r",
         "Amplitude",
