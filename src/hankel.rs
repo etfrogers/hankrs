@@ -35,20 +35,6 @@ pub trait HankelScalar: Clone + Zero + Send + Sync + std::ops::MulAssign<f64> {
     /// Multiplies a purely real transform matrix with a vector of this scalar type.
     fn dot_real_matrix(matrix: &ArrayRef2<f64>, vector: &ArrayRef1<Self>) -> Array1<Self>;
 
-    /// Divides a vector of this scalar type by a purely real vector.
-    #[deprecated(
-        since = "1.2.0",
-        note = "No longer used internally; transforms use pre-scaled matrices"
-    )]
-    fn div_real_array(vector: &ArrayRef1<Self>, scale: &ArrayRef1<f64>) -> Array1<Self>;
-
-    /// Multiplies a mutable vector of this scalar type in-place by a purely real vector.
-    #[deprecated(
-        since = "1.2.0",
-        note = "No longer used internally; transforms use pre-scaled matrices"
-    )]
-    fn mul_real_array_assign(vector: &mut ArrayRef1<Self>, scale: &ArrayRef1<f64>);
-
     /// Interpolates the array along the specified axis using a cubic spline.
     fn spline<D>(
         x0: &ArrayRef1<f64>,
@@ -73,12 +59,7 @@ impl HankelScalar for f64 {
     fn dot_real_matrix(matrix: &ArrayRef2<f64>, vector: &ArrayRef1<f64>) -> Array1<f64> {
         matrix.dot(vector)
     }
-    fn div_real_array(vector: &ArrayRef1<f64>, scale: &ArrayRef1<f64>) -> Array1<f64> {
-        vector.to_owned() / scale
-    }
-    fn mul_real_array_assign(vector: &mut ArrayRef1<f64>, scale: &ArrayRef1<f64>) {
-        *vector *= scale;
-    }
+
     fn spline<D>(
         x0: &ArrayRef1<f64>,
         y0: &ArrayRef<f64, D>,
@@ -91,6 +72,7 @@ impl HankelScalar for f64 {
     {
         spline_f64(x0, y0, x, axis)
     }
+
     fn transform_2d(matrix: &ArrayRef2<f64>, input: &ArrayRef2<f64>, axis: Axis) -> Array2<f64> {
         match axis {
             Axis(0) => matrix.dot(input),
@@ -114,19 +96,7 @@ impl HankelScalar for Complex<f64> {
             .and(&imag_part)
             .map_collect(|&r, &i| Complex::new(r, i))
     }
-    fn div_real_array(
-        vector: &ArrayRef1<Complex<f64>>,
-        scale: &ArrayRef1<f64>,
-    ) -> Array1<Complex<f64>> {
-        ndarray::Zip::from(vector)
-            .and(scale)
-            .map_collect(|&v, &s| v / s)
-    }
-    fn mul_real_array_assign(vector: &mut ArrayRef1<Complex<f64>>, scale: &ArrayRef1<f64>) {
-        ndarray::Zip::from(vector)
-            .and(scale)
-            .for_each(|v, &s| *v *= s);
-    }
+
     fn spline<D>(
         x0: &ArrayRef1<f64>,
         y0: &ArrayRef<Complex<f64>, D>,
@@ -143,6 +113,7 @@ impl HankelScalar for Complex<f64> {
             .and(&imag_part)
             .map_collect(|&r, &i| Complex::new(r, i))
     }
+
     fn transform_2d(
         matrix: &ArrayRef2<f64>,
         input: &ArrayRef2<Complex<f64>>,
