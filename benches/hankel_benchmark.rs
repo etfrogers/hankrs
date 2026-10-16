@@ -9,14 +9,14 @@ use std::hint::black_box;
 fn bench_creation(c: &mut Criterion) {
     let mut group = c.benchmark_group("creation");
 
-    for size in [256, 1024].iter() {
+    for size in &[256, 1024] {
         group.bench_with_input(
             criterion::BenchmarkId::from_parameter(size),
             size,
             |b, &n| {
                 b.iter(|| {
                     HankelTransform::new(black_box(0), black_box(10.0), black_box(n)).unwrap()
-                })
+                });
             },
         );
     }
@@ -26,7 +26,7 @@ fn bench_creation(c: &mut Criterion) {
 fn bench_transforming(c: &mut Criterion) {
     let mut group = c.benchmark_group("qdht1d");
 
-    for size in [256, 1024].iter() {
+    for size in &[256, 1024] {
         let transformer = HankelTransform::new(0, 10.0, *size).unwrap();
         let r = transformer.radius();
         let f = r.mapv(|rad| (-rad * rad).exp());
@@ -43,7 +43,7 @@ fn bench_transforming(c: &mut Criterion) {
 fn bench_transforming2d(c: &mut Criterion) {
     let mut group = c.benchmark_group("qdht2d");
 
-    for size in [256, 1024].iter() {
+    for size in &[256, 1024] {
         let transformer = HankelTransform::new(0, 10.0, *size).unwrap();
         let r = transformer.radius();
         let mut f = ndarray::Array2::<f64>::zeros((100, *size));
@@ -63,7 +63,7 @@ fn bench_transforming2d(c: &mut Criterion) {
 fn bench_transforming3d(c: &mut Criterion) {
     let mut group = c.benchmark_group("qdht3d");
 
-    for size in [256].iter() {
+    for size in &[256] {
         let transformer = HankelTransform::new(0, 10.0, *size).unwrap();
         let r = transformer.radius();
         let mut f = ndarray::Array3::<f64>::zeros((10, 10, *size));
@@ -93,7 +93,7 @@ fn bench_beam_batch(c: &mut Criterion) {
     }
 
     group.bench_function("iqdht_2d", |b| {
-        b.iter(|| transformer.iqdht(black_box(&f), Axis(0)))
+        b.iter(|| transformer.iqdht(black_box(&f), Axis(0)));
     });
 
     group.finish();

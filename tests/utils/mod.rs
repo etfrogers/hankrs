@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 use amos_bessel_rs::bessel_j;
 use approx::assert_abs_diff_eq;
 use approx::{AbsDiffEq, RelativeEq, assert_relative_eq, relative_eq};
-use ndarray::{Array1, Array2, ArrayView1, s};
+use ndarray::{Array1, Array2, ArrayRef1, s};
 use num_complex::Complex64;
 use rstest::{fixture, rstest};
 
@@ -18,7 +18,7 @@ pub fn radius() -> Array1<f64> {
 // HELPER FUNCTIONS
 // ----------------
 
-pub fn outer(x: ArrayView1<f64>, y: ArrayView1<f64>) -> Array2<f64> {
+pub fn outer(x: &ArrayRef1<f64>, y: &ArrayRef1<f64>) -> Array2<f64> {
     let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
     let x_reshaped = x.to_shape((size_x, 1)).unwrap();
     let y_reshaped = y.to_shape((1, size_y)).unwrap();
@@ -26,7 +26,7 @@ pub fn outer(x: ArrayView1<f64>, y: ArrayView1<f64>) -> Array2<f64> {
 }
 
 #[allow(dead_code)]
-pub fn outer_complex(x: ArrayView1<Complex64>, y: ArrayView1<Complex64>) -> Array2<Complex64> {
+pub fn outer_complex(x: &ArrayRef1<Complex64>, y: &ArrayRef1<Complex64>) -> Array2<Complex64> {
     let (size_x, size_y) = (x.shape()[0], y.shape()[0]);
     let x_reshaped = x.to_shape((size_x, 1)).unwrap();
     let y_reshaped = y.to_shape((1, size_y)).unwrap();
@@ -75,8 +75,8 @@ impl RelativeEq for _Array1Comp {
 
 #[allow(dead_code)]
 pub fn assert_relative_eq_with_end_points(
-    expected: ArrayView1<f64>,
-    actual: ArrayView1<f64>,
+    expected: &ArrayRef1<f64>,
+    actual: &ArrayRef1<f64>,
     max_rel_body: f64,
     max_rel_end: f64,
     eps_body: f64,
@@ -136,14 +136,14 @@ pub(crate) fn assert_arrays_equal<'a>(
                 Relative error: {relative_error:e}\n\
                 "
             );
-        };
+        }
     }
 }
 
 // ---------------
 // MATHS FUNCTIONS
 // ----------------
-pub fn generalised_top_hat(r: ArrayView1<f64>, a: f64, p: i32) -> Array1<f64> {
+pub fn generalised_top_hat(r: &ArrayRef1<f64>, a: f64, p: i32) -> Array1<f64> {
     r.mapv(|r| generalised_top_hat_f(r, a, p))
 }
 
@@ -151,10 +151,11 @@ fn generalised_top_hat_f(r: f64, a: f64, p: i32) -> f64 {
     if r <= a { r.powi(p) } else { 0.0 }
 }
 
-pub fn generalised_jinc(v: ArrayView1<f64>, a: f64, p: i32) -> Array1<f64> {
+pub fn generalised_jinc(v: &ArrayRef1<f64>, a: f64, p: i32) -> Array1<f64> {
     v.mapv(|v| generalised_jinc_f(v, a, p))
 }
 
+#[allow(clippy::many_single_char_names)]
 fn generalised_jinc_f(v: f64, a: f64, p: i32) -> f64 {
     if v == 0. {
         match p {
@@ -179,8 +180,8 @@ fn test_generalised_jinc_zero(
     #[values(/*-10,-9,-8,-7,-6,-5,-4,-3,-2,*/ 0,1,2,3,4,5,6,7,8,9,10)] p: i32,
 ) {
     let eps = if p == -2 { 1e-5 / a } else { 1e-200 };
-    let val = generalised_jinc(ndarray::arr1(&[0.0, eps]).view(), a, p);
+    let val = generalised_jinc(&ndarray::arr1(&[0.0, eps]), a, p);
 
     let tolerance = 2e-9;
-    assert_abs_diff_eq!(val[0], val[1], epsilon = tolerance)
+    assert_abs_diff_eq!(val[0], val[1], epsilon = tolerance);
 }

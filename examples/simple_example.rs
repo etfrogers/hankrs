@@ -15,8 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d(
         "simple_example_f.png",
-        radius,
-        f.view(),
+        &radius,
+        &f,
         "Jinc Function",
         "Radius /m",
         "Amplitude",
@@ -30,8 +30,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // As expected, this is a top-hat function bandlimited to k<1, except for numerical error.
     plot_1d(
         "simple_example_ht.png",
-        transformer.kr(),
-        ht.view(),
+        &transformer.kr(),
+        &ht,
         "Hankel Transform",
         "Radial wavevector /m^-1",
         "Amplitude",

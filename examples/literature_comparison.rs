@@ -2,32 +2,33 @@ mod helper;
 use amos_bessel_rs::bessel_j;
 use approx::assert_abs_diff_eq;
 use hankrs::HankelTransform;
-use ndarray::{Array1, ArrayView1, Axis};
+use ndarray::{Array1, ArrayRef1, Axis};
 use std::f64::consts::PI;
 
 use crate::helper::{plot_1d, plot_1d_compare};
 
-fn sinc(x: ArrayView1<f64>) -> Array1<f64> {
+fn sinc(x: &ArrayRef1<f64>) -> Array1<f64> {
     x.mapv(|val| if val == 0.0 { 1.0 } else { val.sin() / val })
 }
 
 /// Equation 12 of Guizar
-fn hankel_transform_of_sinc(v: ArrayView1<f64>, gamma: f64, p: i32) -> Array1<f64> {
+fn hankel_transform_of_sinc(v: &ArrayRef1<f64>, gamma: f64, p: i32) -> Array1<f64> {
     v.mapv(|val| {
         if val < gamma {
-            val.powi(p) * (p as f64 * PI / 2.0).cos()
+            val.powi(p) * (f64::from(p) * PI / 2.0).cos()
                 / (2.0
                     * PI
                     * gamma
                     * (gamma * gamma - val * val).sqrt()
                     * (gamma + (gamma * gamma - val * val).sqrt()).powi(p))
         } else {
-            (p as f64 * (gamma / val).asin()).sin()
+            (f64::from(p) * (gamma / val).asin()).sin()
                 / (2.0 * PI * gamma * (val * val - gamma * gamma).sqrt())
         }
     })
 }
 
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Sinc function and dynamical error (Figure 1 of Guizar)
     // First we will reproduce figure 1 of Guizar-Sicairos & Guitierrez-Vega
@@ -37,28 +38,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let transformer = HankelTransform::new(p, 3.0, 256).unwrap();
         let gamma = 5.0;
         let r = transformer.radius();
-        let func = sinc(r.mapv(|rad| 2.0 * PI * gamma * rad).view());
+        let func = sinc(&r.mapv(|rad| 2.0 * PI * gamma * rad));
         let v = transformer.kr().mapv(|k| k / (2.0 * PI));
-        let expected_ht = hankel_transform_of_sinc(v.view(), gamma, p);
+        let expected_ht = hankel_transform_of_sinc(&v, gamma, p);
         let ht = transformer.qdht(&func, Axis(0));
 
         let v_linear = Array1::linspace(0.0, 10.0, 1024);
-        let expected_ht_linear = hankel_transform_of_sinc(v_linear.view(), gamma, p);
+        let expected_ht_linear = hankel_transform_of_sinc(&v_linear, gamma, p);
 
-        let ht_max = ht.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let ht_max = ht.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let dynamical_error = ht
             .iter()
             .zip(expected_ht.iter())
             .map(|(&h, &e)| 20.0 * ((e - h).abs() / ht_max).log10())
             .collect::<Array1<f64>>();
 
-        let title = format!("Hankel Transform, p={}", p);
+        let title = format!("Hankel Transform, p={p}");
         plot_1d_compare(
-            &format!("lit_comp_sinc_ht_{}.png", p),
-            v_linear.view(),
-            expected_ht_linear.view(),
-            v.view(),
-            ht.view(),
+            &format!("lit_comp_sinc_ht_{p}.png"),
+            &v_linear,
+            &expected_ht_linear,
+            &v,
+            &ht,
             "Analytical",
             "QDHT",
             &title,
@@ -69,9 +70,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
         plot_1d(
-            &format!("lit_comp_sinc_error_{}.png", p),
-            v.view(),
-            dynamical_error.view(),
+            &format!("lit_comp_sinc_error_{p}.png"),
+            &v,
+            &dynamical_error,
             "Dynamical error",
             "Frequency /v",
             "Error /dB",
@@ -96,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if v_val == 0.0 {
             0.0 // handled implicitly in jinc
         } else {
-            a.powi(p + 1) * bessel_j(p as f64 + 1.0, 2.0 * PI * a * v_val).unwrap() / v_val
+            a.powi(p + 1) * bessel_j(f64::from(p) + 1.0, 2.0 * PI * a * v_val).unwrap() / v_val
         }
     });
 
@@ -105,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if v_val == 0.0 {
             0.0 // handled implicitly in jinc
         } else {
-            a.powi(p + 1) * bessel_j(p as f64 + 1.0, 2.0 * PI * a * v_val).unwrap() / v_val
+            a.powi(p + 1) * bessel_j(f64::from(p) + 1.0, 2.0 * PI * a * v_val).unwrap() / v_val
         }
     });
 
@@ -115,13 +116,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let v = transformer.kr().mapv(|k| k / (2.0 * PI));
     plot_1d_compare(
         "lit_comp_fig3_ht.png",
-        v_linear.view(),
-        expected_ht_linear.view(),
-        v.view(),
-        ht.view(),
+        &v_linear,
+        &expected_ht_linear,
+        &v,
+        &ht,
         "Analytical",
         "QDHT",
-        &format!("Hankel transform f_2(v), order {}", p),
+        &format!("Hankel transform f_2(v), order {p}"),
         "Frequency /v",
         "Amplitude",
         0.0..10.0,
@@ -133,10 +134,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d_compare(
         "lit_comp_fig3_retrieved.png",
-        r_linear.view(),
-        func_linear.view(),
-        r.view(),
-        retrieved_func.view(),
+        &r_linear,
+        &func_linear,
+        &r,
+        &retrieved_func,
         "Analytical",
         "QDHT+iQDHT",
         "Round-trip QDHT vs analytical function",
@@ -162,8 +163,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         / func.len() as f64;
 
     println!("**1024 Points:**");
-    println!("- Error in Hankel transform is {:.2e}", error_2);
-    println!("- Error in reconstructed function is {:.2e}", error_1);
+    println!("- Error in Hankel transform is {error_2:.2e}");
+    println!("- Error in reconstructed function is {error_1:.2e}");
 
     assert_abs_diff_eq!(error_2, 4.8e-5, epsilon = 1e-6);
     // Note that Guizar-Sicairos & Guitierrez-Vega got 2.7e-14, so ours is slightly lower
@@ -179,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if v_val == 0.0 {
             0.0 // handled implicitly in jinc
         } else {
-            a.powi(p + 1) * bessel_j(p as f64 + 1.0, 2.0 * PI * a * v_val).unwrap() / v_val
+            a.powi(p + 1) * bessel_j(f64::from(p) + 1.0, 2.0 * PI * a * v_val).unwrap() / v_val
         }
     });
 
@@ -200,8 +201,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         / func_512.len() as f64;
 
     println!("\n**512 Points:**");
-    println!("- Error in Hankel transform is {:.2e}", error_2_512);
-    println!("- Error in reconstructed function is {:.2e}", error_1_512);
+    println!("- Error in Hankel transform is {error_2_512:.2e}");
+    println!("- Error in reconstructed function is {error_1_512:.2e}");
 
     // Note the below is 10 times smaller than
     // Guizar-Sicairos & Guitierrez-Vega (1.3e-3)
