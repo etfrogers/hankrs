@@ -1,4 +1,4 @@
-use ndarray::{Array, Array1, ArrayBase, Axis, Data, Dim, DimAdd, Dimension, RemoveAxis};
+use ndarray::{Array, Array1, ArrayRef, Axis, Dim, DimAdd, Dimension, RemoveAxis};
 
 use crate::hankel::{HankelError, HankelScalar, HankelTransform};
 
@@ -27,16 +27,15 @@ use crate::hankel::{HankelError, HankelScalar, HankelTransform};
 /// # Errors
 /// Returns [`HankelError::EmptyGrid`] if `r` is empty, or [`HankelError::InvalidRadius`]
 /// if the maximum value in `r` is non-positive or NaN.
-pub fn qdht<T: HankelScalar, D, S>(
+pub fn qdht<T: HankelScalar, D>(
     r: Array1<f64>,
-    f: &ArrayBase<S, D>,
+    f: &ArrayRef<T, D>,
     order: i32,
     axis: Axis,
 ) -> Result<(Array1<f64>, Array<T, D>), HankelError>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
-    S: Data<Elem = T>,
 {
     let transformer = HankelTransform::new_from_r_grid(order, r)?;
     let f_transform = transformer.to_transform_r_nd(f, axis)?;
@@ -69,16 +68,15 @@ where
 /// # Errors
 /// Returns [`HankelError::EmptyGrid`] if `k` is empty, or [`HankelError::InvalidRadius`]
 /// if the maximum value in `k` produces a non-positive or NaN maximum radius.
-pub fn iqdht<T: HankelScalar, D, S>(
+pub fn iqdht<T: HankelScalar, D>(
     k: Array1<f64>,
-    f: &ArrayBase<S, D>,
+    f: &ArrayRef<T, D>,
     order: i32,
     axis: Axis,
 ) -> Result<(Array1<f64>, Array<T, D>), HankelError>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
-    S: Data<Elem = T>,
 {
     let transformer = HankelTransform::new_from_k_grid(order, k)?;
     let f_transform = transformer.to_transform_k_nd(f, axis)?;
@@ -114,16 +112,15 @@ where
 /// # See Also
 /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
 /// gives details of and demonstrates verified transform pairs for the spherical QDHT.
-pub fn qdht_spherical<T: HankelScalar, D, S>(
+pub fn qdht_spherical<T: HankelScalar, D>(
     r: Array1<f64>,
-    f: &ArrayBase<S, D>,
+    f: &ArrayRef<T, D>,
     order: i32,
     axis: Axis,
 ) -> Result<(Array1<f64>, Array<T, D>), HankelError>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
-    S: Data<Elem = T>,
 {
     let transformer = HankelTransform::new_spherical_from_r_grid(order, r)?;
     let f_transform = transformer.to_transform_r_nd(f, axis)?;
@@ -159,16 +156,15 @@ where
 /// # See Also
 /// The [online `hankrs` book](https://etfrogers.github.io/hankrs/spherical_known_transforms.html)
 /// gives details of and demonstrates verified transform pairs for the spherical QDHT.
-pub fn iqdht_spherical<T: HankelScalar, D, S>(
+pub fn iqdht_spherical<T: HankelScalar, D>(
     k: Array1<f64>,
-    f: &ArrayBase<S, D>,
+    f: &ArrayRef<T, D>,
     order: i32,
     axis: Axis,
 ) -> Result<(Array1<f64>, Array<T, D>), HankelError>
 where
     D: Dimension + RemoveAxis,
     Dim<[usize; 1]>: DimAdd<<D as Dimension>::Smaller>,
-    S: Data<Elem = T>,
 {
     let transformer = HankelTransform::new_spherical_from_k_grid(order, k)?;
     let f_transform = transformer.to_transform_k_nd(f, axis)?;

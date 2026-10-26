@@ -32,7 +32,7 @@ allow = [
 # Forces a failure if multiple versions of the exact same crate are found
 multiple-versions = "deny"
 skip = [
-    # { name = "syn" },
+    { name = "syn" },
 ]
 deny = []
 

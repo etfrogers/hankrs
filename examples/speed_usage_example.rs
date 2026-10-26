@@ -1,7 +1,7 @@
 mod helper;
 use hankrs::one_shot::{iqdht, qdht};
 use hankrs::{HankelScalar, HankelTransform};
-use ndarray::{Array1, Array2, ArrayView1, Axis};
+use ndarray::{Array1, Array2, ArrayRef1, Axis};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 use std::time::Instant;
@@ -15,15 +15,15 @@ use crate::helper::imagesc;
 // Here we will use the same example application as the usage_example:
 // a beam-propagation method propagation of a radially-symmetric Gaussian beam.
 fn propagate_using_object(
-    r: ArrayView1<f64>,
-    field: ArrayView1<Complex64>,
+    r: &ArrayRef1<f64>,
+    field: &ArrayRef1<Complex64>,
     nr: usize,
     nz: usize,
-    z: ArrayView1<f64>,
+    z: &ArrayRef1<f64>,
     k0: f64,
 ) -> Array2<f64> {
     let transformer = HankelTransform::new_from_r_grid(0, r.to_owned()).unwrap();
-    let field_for_transform = transformer.to_transform_r(&field).unwrap(); // Resampled field
+    let field_for_transform = transformer.to_transform_r(field).unwrap(); // Resampled field
     let hankel_transform = transformer.qdht(&field_for_transform, Axis(0));
 
     let mut propagated_field = Array2::<Complex64>::zeros((nr, nz));
@@ -44,14 +44,14 @@ fn propagate_using_object(
 }
 
 fn propagate_using_single_shot(
-    r: ArrayView1<f64>,
-    field: ArrayView1<Complex64>,
+    r: &ArrayRef1<f64>,
+    field: &ArrayRef1<Complex64>,
     nr: usize,
     nz: usize,
-    z: ArrayView1<f64>,
+    z: &ArrayRef1<f64>,
     k0: f64,
 ) -> Array2<f64> {
-    let (kr, hankel_transform) = qdht(r.to_owned(), &field, 0, Axis(0)).unwrap();
+    let (kr, hankel_transform) = qdht(r.to_owned(), field, 0, Axis(0)).unwrap();
 
     let mut propagated_field = Array2::<Complex64>::zeros((nr, nz));
     let kz = kr.mapv(|kr_val| (k0 * k0 - kr_val * kr_val).sqrt());
@@ -64,7 +64,7 @@ fn propagate_using_single_shot(
         let (r_transform, field_at_z) =
             iqdht(kr.clone(), &hankel_transform_at_z, 0, Axis(0)).unwrap();
 
-        let field_slice = Complex64::spline(r_transform.view(), field_at_z.view(), r, Axis(0));
+        let field_slice = Complex64::spline(&r_transform, &field_at_z, r, Axis(0));
         propagated_field.column_mut(n).assign(&field_slice);
     }
     propagated_field.mapv(|c| c.norm_sqr())
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lambda_ = 488e-9;
     let k0 = 2.0 * PI / lambda_;
 
-    let field_real = helper::gauss1d(r.view(), 0.0, dr); // Initial field
+    let field_real = helper::gauss1d(&r, 0.0, dr); // Initial field
     let field: Array1<Complex64> = field_real.mapv(|v| Complex64::new(v, 0.0));
 
     // Now we need two functions that propagate the beam in two ways (giving the same answer).
@@ -92,8 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Now run and time the two functions:
     let start = Instant::now();
-    let single_shot_intensity =
-        propagate_using_single_shot(r.view(), field.view(), nr, nz, z.view(), k0);
+    let single_shot_intensity = propagate_using_single_shot(&r, &field, nr, nz, &z, k0);
     let duration = start.elapsed();
     println!(
         "Single shot propagation took {:.2?} s",
@@ -101,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let start = Instant::now();
-    let object_intensity = propagate_using_object(r.view(), field.view(), nr, nz, z.view(), k0);
+    let object_intensity = propagate_using_object(&r, &field, nr, nz, &z, k0);
     let duration = start.elapsed();
     println!("Object propagation took {:.2?} s", duration.as_secs_f64());
 
@@ -113,9 +112,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     imagesc(
         "speed_usage_single_shot.png",
-        z_mm.view(),
-        r_mm.view(),
-        single_shot_intensity.view(),
+        &z_mm,
+        &r_mm,
+        &single_shot_intensity,
         "Single Shot Output",
         "Propagation distance (z) /mm",
         "Radial position (r) /mm",
@@ -124,9 +123,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     imagesc(
         "speed_usage_object.png",
-        z_mm.view(),
-        r_mm.view(),
-        object_intensity.view(),
+        &z_mm,
+        &r_mm,
+        &object_intensity,
         "Object Output",
         "Propagation distance (z) /mm",
         "Radial position (r) /mm",

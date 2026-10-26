@@ -3,26 +3,26 @@
 
 #[cfg(feature = "blas")]
 extern crate blas_src;
-use ndarray::{Array1, ArrayView1, ArrayView2};
+use ndarray::{Array1, ArrayRef1, ArrayRef2};
 use plotters::prelude::*;
 use std::{fs, ops::Range};
 
 pub fn get_image_path(filename: &str) -> String {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let image_dir = format!("{}/docs/src/images", manifest_dir);
+    let image_dir = format!("{manifest_dir}/docs/src/images");
     fs::create_dir_all(&image_dir).unwrap();
-    format!("{}/{}", image_dir, filename)
+    format!("{image_dir}/{filename}")
 }
 
-pub fn gauss1d(x: ArrayView1<f64>, x0: f64, fwhm: f64) -> Array1<f64> {
+pub fn gauss1d(x: &ArrayRef1<f64>, x0: f64, fwhm: f64) -> Array1<f64> {
     let factor = -2.0 * 2.0f64.ln() / (fwhm * fwhm);
     x.mapv(|val| (factor * (val - x0).powi(2)).exp())
 }
 
 pub fn plot_1d(
     filename: &str,
-    x: ArrayView1<f64>,
-    y: ArrayView1<f64>,
+    x: &ArrayRef1<f64>,
+    y: &ArrayRef1<f64>,
     title: &str,
     xlabel: &str,
     ylabel: &str,
@@ -55,10 +55,10 @@ pub fn plot_1d(
 
 pub fn plot_1d_compare(
     filename: &str,
-    x1: ArrayView1<f64>,
-    y1: ArrayView1<f64>,
-    x2: ArrayView1<f64>,
-    y2: ArrayView1<f64>,
+    x1: &ArrayRef1<f64>,
+    y1: &ArrayRef1<f64>,
+    x2: &ArrayRef1<f64>,
+    y2: &ArrayRef1<f64>,
     label1: &str,
     label2: &str,
     title: &str,
@@ -109,17 +109,17 @@ pub fn plot_1d_compare(
 
 pub fn plot_1d_original_and_transform(
     filename: &str,
-    x_orig: ArrayView1<f64>,
-    y_orig: ArrayView1<f64>,
+    x_orig: &ArrayRef1<f64>,
+    y_orig: &ArrayRef1<f64>,
     title_orig: &str,
     xlabel_orig: &str,
     ylabel_orig: &str,
     x_range_orig: std::ops::Range<f64>,
     y_range_orig: std::ops::Range<f64>,
-    x1_trans: ArrayView1<f64>,
-    y1_trans: ArrayView1<f64>,
-    x2_trans: ArrayView1<f64>,
-    y2_trans: ArrayView1<f64>,
+    x1_trans: &ArrayRef1<f64>,
+    y1_trans: &ArrayRef1<f64>,
+    x2_trans: &ArrayRef1<f64>,
+    y2_trans: &ArrayRef1<f64>,
     label1: &str,
     label2: &str,
     title_trans: &str,
@@ -201,9 +201,9 @@ pub fn plot_1d_original_and_transform(
 
 pub fn imagesc(
     filename: &str,
-    x: ArrayView1<f64>,
-    y: ArrayView1<f64>,
-    z: ArrayView2<f64>,
+    x: &ArrayRef1<f64>,
+    y: &ArrayRef1<f64>,
+    z: &ArrayRef2<f64>,
     title: &str,
     xlabel: &str,
     ylabel: &str,
@@ -232,11 +232,13 @@ pub fn imagesc(
     let y_min = *y.first().unwrap_or(&0.0);
     let y_max = *y.last().unwrap_or(&1.0);
     let (nx, ny) = (x.len(), y.len());
+    #[allow(clippy::cast_precision_loss)]
     let dx = (x_max - x_min) / (nx as f64);
+    #[allow(clippy::cast_precision_loss)]
     let dy = (y_max - y_min) / (ny as f64);
 
-    let z_min = z.iter().cloned().fold(f64::INFINITY, f64::min);
-    let z_max = z.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let z_min = z.iter().copied().fold(f64::INFINITY, f64::min);
+    let z_max = z.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let z_range = z_max - z_min;
 
     // Use a color map (Viridis-like or simple heatmap)

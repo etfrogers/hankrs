@@ -34,6 +34,23 @@ You can add `hankrs` to your Rust project via `cargo`:
 cargo add hankrs
 ```
 
+### Compatibility
+
+| `hankrs` version | `ndarray` version | Status |
+| :--- | :--- | :--- |
+| **`2.x`** | `0.17` | **Active / Current** |
+| **`1.x`** | `0.16` | Maintenance |
+
+```toml
+# For ndarray 0.17:
+[dependencies]
+hankrs = "2"
+
+# For ndarray 0.16:
+[dependencies]
+hankrs = "1"
+```
+
 For development and running the tests, just use standard Cargo commands:
 
 ```bash

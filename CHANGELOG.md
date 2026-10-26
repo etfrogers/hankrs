@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-26
+
+### Breaking Changes
+- **Upgraded to `ndarray 0.17`**: Upgraded `ndarray` to `0.17`, `ndarray-stats` to `0.7.0`, and `ndarray-interp` to `0.6.0`.
+- **Function arguments migrated to `&ArrayRef`**: Replaced `ArrayView` and `&ArrayBase` argument types with `&ArrayRef` across all `HankelTransform` methods (`qdht`, `iqdht`, `to_transform_r`, `to_original_r`, etc.), `one_shot` convenience functions, and `HankelScalar` trait methods (`dot_real_matrix`, `spline`, `transform_2d`). Functions no longer require the generic storage parameter `S: Data<Elem = T>`, allowing callers to pass any array or view type directly via deref coercion.
+- **Removed deprecated methods**: Removed `HankelScalar::div_real_array` and `HankelScalar::mul_real_array_assign` (previously deprecated in 1.2.0 in favor of pre-scaled transform matrices).
+
+### Documentation
+- Added compatibility documentation explaining `hankrs` version selection (`1.x` for `ndarray 0.16`, `2.x` for `ndarray 0.17`) in `README.md` and crate-level documentation.
+
 ## [1.2.2] - 2026-10-13
 
 ### Documentation

@@ -38,17 +38,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d_original_and_transform(
         "spherical_known_transforms_gaussian.png",
-        r_linear.view(),
-        f_linear.view(),
+        &r_linear,
+        &f_linear,
         "Gaussian function: exp(-r²)",
         "Radius r",
         "Amplitude",
         0.0..4.0,
         -0.05..1.05,
-        kr_linear.view(),
-        expected_transform.view(),
-        kr.view(),
-        actual_transform.view(),
+        &kr_linear,
+        &expected_transform,
+        &kr,
+        &actual_transform,
         "Analytical",
         "SQDHT",
         "Spherical Hankel transform - Gaussian",
@@ -82,8 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .radius()
         .iter()
         .rposition(|&r| r < a_hat)
-        .map(|idx| transformer_hat.radius()[idx])
-        .unwrap_or(a_hat);
+        .map_or(a_hat, |idx| transformer_hat.radius()[idx]);
 
     let actual_transform_hat = transformer_hat.qdht(&function_hat, Axis(0));
     let kr_hat = transformer_hat.kr();
@@ -99,17 +98,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     plot_1d_original_and_transform(
         "spherical_known_transforms_tophat.png",
-        r_hat_linear.view(),
-        f_hat_linear.view(),
+        &r_hat_linear,
+        &f_hat_linear,
         "Top-hat function: 1 for r < a",
         "Radius r",
         "Amplitude",
         0.0..2.0,
         -0.1..1.2,
-        kr_hat_linear.view(),
-        expected_transform_hat.view(),
-        kr_hat.view(),
-        actual_transform_hat.view(),
+        &kr_hat_linear,
+        &expected_transform_hat,
+        &kr_hat,
+        &actual_transform_hat,
         "Analytical",
         "SQDHT",
         "Spherical Hankel transform - Top-Hat",
