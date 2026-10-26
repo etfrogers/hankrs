@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-10-26
+
+### Security & Dependencies
+- Updated `rustls` to `0.23.46` in the lockfile to resolve security advisories `RUSTSEC-2026-0347`, `RUSTSEC-2026-0348`, `RUSTSEC-2026-0349`, and `RUSTSEC-2026-0350`.
+- Updated `rand` to `0.8.8`, `rustls-webpki` to `0.103.16`, and `webpki-roots` to `1.0.11`.
+
 ## [1.2.2] - 2026-10-13
 
 ### Documentation
