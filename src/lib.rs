@@ -5,6 +5,11 @@
 //! on `ndarray` arrays and natively supports both real (`f64`) and complex
 //! (`num_complex::Complex64`) numbers via the [`HankelScalar`] trait.
 //!
+//! # Compatibility
+//!
+//! * **`hankrs 2.x`** targets `ndarray 0.17`.
+//! * For projects using `ndarray 0.16`, use **`hankrs 1.x`**.
+//!
 //! # Examples and Guides
 //! Comprehensive examples and theoretical demonstrations can be found in the
 //! [online `hankrs` book](https://etfrogers.github.io/hankrs/).
